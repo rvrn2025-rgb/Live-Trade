@@ -2,62 +2,53 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import ta
+import math
 from streamlit_autorefresh import st_autorefresh
 
-# 1. הגדרת דף ברוחב מלא
-st.set_page_config(page_title="PRO-Terminal // Leveraged Tracker", layout="wide")
+# 1. הגדרת תצורת דף PRO
+st.set_page_config(page_title="DCA Matrix // Leveraged Terminal", layout="wide")
 
-# רענון אוטומטי מובנה (כל 30 שניות)
-st_autorefresh(interval=30000, key="datarefresh")
+# רענון אוטומטי של המסך בכל 30 שניות לשמירה על נתוני אמת
+st_autorefresh(interval=30000, key="matrix_refresh")
 
-# 2. הזרקת קוד עיצוב הייטקסטי (Dark Cyber Theme) כולל תמיכה מלאה ב-RTL
+# 2. הזרקת עיצוב קסטום (Premium Dark Matrix) ותמיכה ב-RTL
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700&display=swap');
     
-    /* עיצוב כללי של האפליקציה */
     html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
-        background-color: #090d16 !important;
-        color: #f0f4f8 !important;
+        background-color: #0b0f19 !important;
+        color: #e2e8f0 !important;
         font-family: 'Assistant', sans-serif !important;
         direction: RTL !important;
         text-align: right !important;
     }
     
-    /* עיצוב כותרות */
-    h1 {
+    h1, h2, h3 {
         color: #ffffff !important;
-        font-weight: 800 !important;
-        text-shadow: 0px 0px 15px rgba(0, 200, 255, 0.3);
-        border-bottom: 2px solid #1e293b;
-        padding-bottom: 15px;
+        font-weight: 700 !important;
     }
     
-    /* כרטיסיות הייטק מותאמות אישית */
-    .kpi-card {
-        background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
-        border: 1px solid #374151;
+    /* לוח הבקרה העליון */
+    .control-panel {
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid #334155;
         border-radius: 12px;
         padding: 20px;
-        text-align: center;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
-        margin-bottom: 20px;
+        margin-bottom: 25px;
     }
-    .kpi-title { color: #9ca3af; font-size: 14px; font-weight: 600; }
-    .kpi-value { color: #38bdf8; font-size: 24px; font-weight: 700; margin-top: 5px; }
     
-    /* התאמת הטבלה של סטרימליט למראה חשוך ונקי */
+    /* קסטומיזציה לטבלה של סטרימליט */
     [data-testid="stDataFrame"] {
         background-color: #111827 !important;
         border: 1px solid #1f2937 !important;
         border-radius: 12px !important;
-        padding: 10px !important;
     }
     
-    /* תיבות מידע בתחתית */
-    .playbook-box {
-        background-color: #0f172a;
-        border-right: 4px solid #38bdf8;
+    /* תיבות פלייבוק בתחתית */
+    .playbook-card {
+        background-color: #111827;
+        border-right: 4px solid #3b82f6;
         padding: 15px;
         border-radius: 4px 12px 12px 4px;
         margin-bottom: 15px;
@@ -65,195 +56,148 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 3. כותרת עליונה מעוצבת וממורכזת
-st.markdown('<h1 style="text-align: center;">⚡ טבלת מעקב ממונפות וליבה | PRO TERMINAL</h1>', unsafe_allow_html=True)
-st.write("")
+# 3. כותרת הטרמינל
+st.markdown('<h1 style="text-align: center; color: #38bdf8;">⚡ טבלת מעקב ממונפות וליבה – ניהול מנות איסוף</h1>', unsafe_allow_html=True)
+st.markdown('<p style="text-align: center; color: #94a3b8;">מערכת אלגוריתמית מתקדמת למיצוע הנדסי (DCA) ללא רגש</p>', unsafe_allow_html=True)
 
-# 4. סרגל כלים מתקדם (שליטה במסגרת הזמן)
-col_control1, col_control2 = st.columns([2, 2])
-with col_control1:
-    tf_choice = st.selectbox(
-        "⚡ בחר אינטרוול זמן לדיוק אישורי כניסה:",
-        ["יומי (Daily) - אסטרטגי לקפיצים ארוכים", "שעתי (1 Hour) - סווינג מהיר", "15 דקות (15m) - תזמון נקודת תפנית נקודתית"]
-    )
+# 4. לוח בקרה אינטראקטיבי (סימולטור מותאם אישית לכל משתמש)
+st.markdown('<div class="control-panel">', unsafe_allow_html=True)
+col_param1, col_param2, col_param3 = st.columns(3)
 
-if tf_choice.startswith("יומי"):
-    period, interval = "3mo", "1d"
-elif tf_choice.startswith("שעתי"):
-    period, interval = "1mo", "1h"
-else:
-    period, interval = "1wk", "15m"
+with col_param1:
+    tranche_size = st.number_input("💰 גודל מנה קבועה לרכישה ($):", min_value=100, max_value=100000, value=3000, step=500)
 
-# 5. רשימת הנכסים המובנית
-ticker_details = [
-    {"ticker": "QQQ", "category": "📈 נאסד\"ק (Nasdaq)", "type": "בסיס (x1)"},
-    {"ticker": "TQQQ", "category": "📈 נאסד\"ק (Nasdaq)", "type": "ממונף (x3)"},
-    {"ticker": "SOXX", "category": "💻 שבבים (Semiconductors)", "type": "בסיס (x1)"},
-    {"ticker": "SOXL", "category": "💻 שבבים (Semiconductors)", "type": "ממונף (x3)"},
-    {"ticker": "SPY", "category": "🇺🇸 S&P 500", "type": "בסיס (x1)"},
-    {"ticker": "UPRO", "category": "🇺🇸 S&P 500", "type": "ממונף (x3)"},
-    {"ticker": "XLF", "category": "💰 פיננסים (Finance)", "type": "בסיס (x1)"},
-    {"ticker": "FAS", "category": "💰 פיננסים (Finance)", "type": "ממונף (x3)"},
+with col_param2:
+    drop_interval = st.selectbox("📐 מרווח ירידת הבסיס בין מנות (%):", [3.5, 5.0, 7.0, 10.0], index=0)
+
+with col_param3:
+    st.write("")
+    st.write("")
+    st.markdown(f"<p style='color: #34d399; font-weight: bold; text-align: center;'>מצב סימולציה פעיל // עדכון לייב</p>", unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+# 5. הגדרת זוגות המטריצה (בסיס + ממונף)
+asset_pairs = [
+    {"base": "QQQ", "leveraged": "TQQQ", "name": "📈 נאסד\"ק (QQQ / TQQQ)"},
+    {"base": "SOXX", "leveraged": "SOXL", "name": "💻 שבבים (SOXX / SOXL)"},
+    {"base": "SPY", "leveraged": "UPRO", "name": "🇺🇸 S&P 500 (SPY / UPRO)"},
+    {"base": "XLF", "leveraged": "FAS", "name": "💰 פיננסים (XLF / FAS)"}
 ]
 
 @st.cache_data(ttl=15)
-def fetch_terminal_data(p, i):
-    data_list = []
-    for item in ticker_details:
-        ticker = item["ticker"]
+def get_matrix_data(size, interval):
+    rows = []
+    for pair in asset_pairs:
         try:
-            stock = yf.Ticker(ticker)
-            hist = stock.history(period=p, interval=i)
+            # שליפת נתוני נכס הבסיס (מבט חצי שנתי למציאת שיא ריאלי)
+            base_stock = yf.Ticker(pair["base"])
+            base_hist = base_stock.history(period="6mo", interval="1d")
             
-            if len(hist) > 14:
-                current_price = hist['Close'].iloc[-1]
-                max_price = hist['High'].max()
-                drop_from_max = ((current_price - max_price) / max_price) * 100
+            # שליפת מחיר ממונף נוכחי
+            lev_stock = yf.Ticker(pair["leveraged"])
+            lev_curr = lev_stock.history(period="1d")['Close'].iloc[-1]
+            
+            if len(base_hist) > 14:
+                base_curr = base_hist['Close'].iloc[-1]
+                base_max = base_hist['High'].max()
                 
-                # חישוב אינדיקטורים טכניים
-                rsi = round(ta.momentum.rsi(hist['Close'], window=14).iloc[-1], 1)
-                stoch = round(ta.momentum.stoch(hist['High'], hist['Low'], hist['Close'], window=14).iloc[-1], 1)
-                mfi = round(ta.volume.money_flow_index(hist['High'], hist['Low'], hist['Close'], hist['Volume'], window=14).iloc[-1], 1)
-                drop_printed = round(drop_from_max, 1)
+                # חישוב אחוז הירידה הריאלי של הבסיס מהטופ
+                base_drop = ((base_curr - base_max) / base_max) * 100
+                abs_drop = abs(base_drop)
                 
-                # בדיקת תנאי הסף הקשוחים לאיתות
-                c_drop = drop_printed <= -15
-                c_rsi = rsi <= 30
-                c_stoch = stoch <= 20
-                c_mfi = mfi <= 20
+                # מתמטיקה של מנות קנייה
+                tranches_bought = math.floor(abs_drop / interval)
+                total_deployed = tranches_bought * size
                 
-                score = sum([c_drop, c_rsi, c_stoch, c_mfi])
+                # חישוב היעד הבא
+                next_tranche_num = tranches_bought + 1
+                next_drop_target = next_tranche_num * interval
+                next_price_target = base_max * (1 - (next_drop_target / 100))
                 
-                # המרה לשפת מסחר חדה ומובנת
-                if score == 0:
-                    signal = "⚪ שוק רגיל (0/4)"
-                elif score == 1:
-                    signal = "🟡 גישושים ראשונים (1/4)"
-                elif score == 2:
-                    signal = "🟠 במעקב צמוד (2/4)"
-                elif score == 3:
-                    signal = "🚨 כוננות שיא (3/4)"
+                # חישוב מדדי גיבוי ומומנטום לבסיס
+                rsi = ta.momentum.rsi(base_hist['Close'], window=14).iloc[-1]
+                stoch = ta.momentum.stoch(base_hist['High'], base_hist['Low'], base_hist['Close'], window=14).iloc[-1]
+                mfi = ta.volume.money_flow_index(base_hist['High'], base_hist['Low'], base_hist['Close'], base_hist['Volume'], window=14).iloc[-1]
+                
+                # יצירת המלצה אוטומטית לפי קרבה ליעד
+                distance_to_next = next_drop_target - abs_drop
+                if distance_to_next <= 0.5:
+                    recommendation = f"🚨 פקודה: רכוש מנה {next_tranche_num}!"
                 else:
-                    signal = "🔥 הדק נלחץ! (4/4)"
+                    recommendation = f"⏳ ממתין למדרגה {next_tranche_num} ב-{next_drop_target}%"
                 
-                data_list.append({
-                    "סימבול": ticker,
-                    "סקטור / מדד": item["category"],
-                    "סוג הנייר": item["type"],
-                    "מחיר אחרון": round(current_price, 2),
-                    "ירידה מהשיא": drop_printed,
-                    "RSI (14)": rsi,
-                    "Stochastic": stoch,
-                    "MFI (14)": mfi,
-                    "🚦 סטטוס איתות משולב": signal,
-                    "score_raw": score # עמודה מוסתרת לחישובים בלבד
+                # מדדי מומנטום משולבים לתצוגה קומפקטית
+                indicators_status = f"RSI: {round(rsi,1)} | STOCH: {round(stoch,1)}"
+                
+                rows.append({
+                    "צמד נכסים": pair["name"],
+                    "מחיר בסיס": round(base_curr, 2),
+                    "מחיר ממונף": round(lev_curr, 2),
+                    "ירידת בסיס מהשיא": round(base_drop, 1),
+                    "מנות שנרכשו": f"{tranches_bought} מנות",
+                    "הון מושקע בפוזיציה": f"${total_deployed:,}",
+                    "מדדי מומנטום (בסיס)": indicators_status,
+                    "🎯 מחיר יעד למנה הבאה": f"${round(next_price_target, 2)}",
+                    "🔮 המלצה לביצוע": recommendation,
+                    "is_trigger": distance_to_next <= 0.5  # עזר לצביעה
                 })
         except:
             continue
-    return pd.DataFrame(data_list)
+    return pd.DataFrame(rows)
 
-df = fetch_terminal_data(period, interval)
+df = get_matrix_data(tranche_size, drop_interval)
 
 if not df.empty:
-    # 6. יצירת כרטיסיות הייטק (KPIs) בראש העמוד
-    total_alerts = len(df[df["score_raw"] >= 3])
-    most_dropped = df.loc[df["ירידה מהשיא"].idxmin()]["סימבול"]
-    max_drop_val = df["ירידה מהשיא"].min()
-    
-    kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
-    with kpi_col1:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-title">🚨 נכסים בכוננות / כניסה (3 ומעלה)</div><div class="kpi-value">{total_alerts} נכסים</div></div>', unsafe_allow_html=True)
-    with kpi_col2:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-title">📉 ההנחה הגדולה ביותר מהשיא</div><div class="kpi-value">{most_dropped} ({max_drop_val}%)</div></div>', unsafe_allow_html=True)
-    with kpi_col3:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-title">🔄 קצב עדכון דאטה סינתטי</div><div class="kpi-value">לייב (30 שניות)</div></div>', unsafe_allow_html=True)
-
-    # 7. פונקציית צביעה מתקדמת - מותאמת ל-Dark Theme
-    def color_terminal(row):
+    # 6. פונקציית צביעה מתוחכמת לשורות המטריצה
+    def style_matrix(row):
         styles = [''] * len(row)
-        
-        # צבעים רכים ופוספורסנטיים שלא שורפים את העין ברקע כהה
-        alert_green = 'background-color: #064e3b; color: #34d399; font-weight: bold;'
-        trigger_gold = 'background-color: #78350f; color: #fbbf24; font-weight: bold;'
-        perfect_strike = 'background-color: #047857; color: #ffffff; font-weight: bold; border: 1px solid #34d399;'
-        
-        if row["ירידה מהשיא"] <= -15:
-            styles[df.columns.get_loc("ירידה מהשיא")] = alert_green
-        if row["RSI (14)"] <= 30:
-            styles[df.columns.get_loc("RSI (14)")] = alert_green
-        if row["Stochastic"] <= 20:
-            styles[df.columns.get_loc("Stochastic")] = alert_green
-        if row["MFI (14)"] <= 20:
-            styles[df.columns.get_loc("MFI (14)")] = alert_green
+        # אם יש פקודת רכישה קרובה - נצבע את תא ההמלצה בזהב מנצנץ
+        if row["is_trigger"]:
+            styles[df.columns.get_loc("🔮 המלצה לביצוע")] = 'background-color: #78350f; color: #f59e0b; font-weight: bold;'
+        else:
+            styles[df.columns.get_loc("🔮 המלצה לביצוע")] = 'color: #94a3b8;'
             
-        # צביעת עמודת הסטטוס על פי חומרת האיתות
-        status = row["🚦 סטטוס איתות משולב"]
-        if "4/4" in status:
-            styles[df.columns.get_loc("🚦 סטטוס איתות משולב")] = perfect_strike
-        elif "3/4" in status:
-            styles[df.columns.get_loc("🚦 סטטוס איתות משולב")] = trigger_gold
-            
+        # צביעת אחוז הירידה בגוון כחול/ירוק הייטקסטי עמוק
+        styles[df.columns.get_loc("ירידת בסיס מהשיא")] = 'background-color: #0f172a; color: #38bdf8; font-weight: bold;'
         return styles
 
-    # החלת העיצוב והסתרת עמודת העזר
-    styled_df = df.style.apply(color_terminal, axis=1)
-    
-    # 8. הצגת הטבלה המרכזית הגדולה והמורחבת
+    styled_df = df.style.apply(style_matrix, axis=1)
+
+    # 7. הצגת טבלת המטריצה הראשית בהתאמה אישית מוחלטת
     st.dataframe(
         styled_df,
         use_container_width=True,
         hide_index=True,
-        column_order=["סימבול", "סקטור / מדד", "סוג הנייר", "מחיר אחרון", "ירידה מהשיא", "RSI (14)", "Stochastic", "MFI (14)", "🚦 סטטוס איתות משולב"],
+        column_order=["צמד נכסים", "מחיר בסיס", "מחיר ממונף", "ירידת בסיס מהשיא", "מנות שנרכשו", "הון מושקע בפוזיציה", "מדדי מומנטום (בסיס)", "🎯 מחיר יעד למנה הבאה", "🔮 המלצה לביצוע"],
         column_config={
-            "סימבול": st.column_config.TextColumn("סימבול", help="טיקר הנכס בבורסה"),
-            "מחיר אחרון": st.column_config.NumberColumn("מחיר אחרון", format="$%.2f"),
-            "ירידה מהשיא": st.column_config.NumberColumn("ירידה מהשיא", format="%.1f%%", help="הנחה באחוזים מהפסגה הגבוהה ביותר שנמדדה לאורך התקופה."),
-            "RSI (14)": st.column_config.NumberColumn("RSI (14)", help="מדד עוצמה יחסית. מתחת ל-30 מצביע על קפיץ מתוח ומכירות יתר קיצוניות."),
-            "Stochastic": st.column_config.NumberColumn("Stochastic", help="מדד המיקום בטווח המחירים. מתחת ל-20 מראה שהמחיר שוכב על הרצפה הסטטיסטית שלו."),
-            "MFI (14)": st.column_config.NumberColumn("MFI (14)", help="זרימת כסף משולבת נפח. מתחת ל-20 מעיד על בריחת נזילות רגעית לפני היפוך חזק."),
-            "🚦 סטטוס איתות משולב": st.column_config.TextColumn("🚦 סטטוס איתות משולב", help="סיכום תנאי הברזל: כמה אינדיקטורים מתוך ה-4 נדלקו במקביל.")
+            "ירידת בסיס מהשיא": st.column_config.NumberColumn("ירידת בסיס מהשיא", format="%.1f%%"),
+            "מחיר בסיס": st.column_config.NumberColumn("מחיר בסיס", format="$%.2f"),
+            "מחיר ממונף": st.column_config.NumberColumn("מחיר ממונף", format="$%.2f"),
         }
     )
 else:
-    st.warning("מערכת הנתונים בטעינה ראשונית...")
+    st.warning("מתחבר לשרתי הבורסה לשליפת הנתונים...")
 
-# 9. ספר החוקים האלגוריתמי בתחתית העמוד (למטה, מעוצב ומקצועי)
+# 8. ספר חוקים הנדסי מותאם לאסטרטגיית איסוף
 st.write("")
 st.write("---")
-st.markdown('### 📚 ספר החוקים של הטרמינל – איך מדייקים כניסות מנצחות?')
+st.markdown('### 🛠️ מדריך הפעלה לקבוצה: מתמטיקת המיצועים של הממונפות')
 
-col_info1, col_info2 = st.columns(2)
+col_guide1, col_guide2 = st.columns(2)
 
-with col_info1:
+with col_guide1:
     st.markdown("""
-    <div class="playbook-box">
-        <h4>🎯 חוק הקונפלואנס (Confluence) - למה צריך 4/4?</h4>
-        <p>מסחר בממונפות (x3) הוא חיה מסוכנת שמפרקת חשבונות אם נכנסים מוקדם מדי. הציון המשולב מונע ממך "לנחש" תחתית. 
-        רק כאשר כל <b>ארבעת האלמנטים</b> (מחיר, מומנטום, מיקום בטווח, ונפח כסף) מסכימים פה אחד שהנכס נשחט לרצפה - הסטטוס הופך ל-<b>🔥 הדק נלחץ!</b>. זוהי נקודת הכניסה בעלת הסתברות ההצלחה הגבוהה ביותר.</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("""
-    <div class="playbook-box" style="border-right-color: #a7f3d0;">
-        <h4>💸 פילוסופיית המדדים בקצר וקולע</h4>
-        <ul>
-            <li><b>ירידה מהשיא:</b> מוודאת שאתה קונה במבצע, לא בשיא כל הזמנים.</li>
-            <li><b>RSI:</b> מוודא שהמוכרים הגיעו לאפיסת כוחות מלאה.</li>
-            <li><b>Stochastic:</b> מאתר את ה"רצפה הטכנית" של הימים האחרונים.</li>
-            <li><b>MFI:</b> עוקב אחרי הכסף הגדול של המוסדיים – כשהוא מתחת ל-20, הוא מאותת שהם סיימו למכור.</li>
-        </ul>
+    <div class="playbook-card">
+        <h4>📐 חוק המנות והמרווח הדינמי</h4>
+        <p>במקום לנחש איפה הרצפה, הטבלה מחלקת את השוק לרצועות מחיר קבועות לבחירתך (למשל כל 3.5%). 
+        כאשר מדד הבסיס חוצה מדרגה, המערכת רושמת באופן קר שבוצע קניין של מנה נוספת ומחשבת את סך ההון שכבר הושקע בפוזיציה.</p>
     </div>
     """, unsafe_allow_html=True)
 
-with col_info2:
+with col_guide2:
     st.markdown("""
-    <div class="playbook-box" style="border-right-color: #fbbf24;">
-        <h4>⏱️ טקטיקת "הטיימפריים הכפול" לפריצה מושלמת</h4>
-        <p>רוצה לשפר את הדיוק לרמת הפיקסל? השתמש בכפתור החלפת הזמן בראש העמוד בצורה הבאה:</p>
-        <ol>
-            <li>זהה בגרף <b>היומי (Daily)</b> נכס שנמצא בסטטוס מתקדם כמו <b>🚨 כוננות שיא (3/4)</b>.</li>
-            <li>העבר את המערכת לגרף <b>שעתי (1 Hour)</b> או <b>15 דקות</b>.</li>
-            <li>חכה שהגרף המהיר ידלק על <b>4/4</b> – זהו הניצוץ המדויק שמקדים את היפוך המגמה בגרף הגדול!</li>
-        </ol>
+    <div class="playbook-card" style="border-right-color: #34d399;">
+        <h4>🎯 פקודות דולריות מדויקות (No Emotion)</h4>
+        <p>עמודת <b>"מחיר יעד למנה הבאה"</b> לוקחת את שיא כל הזמנים הנוכחי ומחשבת עבורך בדיוק באיזה מחיר דולר של נכס הבסיס (למשל QQQ) עליך לפתוח את האפליקציה ולרכוש את המנה הבאה של הממונפת (TQQQ). אם רשום <b>⏳ ממתין</b>, אין שום סיבה לבצע פעולות בשוק.</p>
     </div>
     """, unsafe_allow_html=True)
