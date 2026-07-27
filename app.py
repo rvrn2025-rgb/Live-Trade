@@ -11,9 +11,8 @@ st.set_page_config(page_title="DCA Matrix // Leveraged Terminal", layout="wide")
 # רענון אוטומטי של המסך בכל 30 שניות לשמירה על נתוני אמת
 st_autorefresh(interval=30000, key="matrix_refresh")
 
-# 2. הזרקת עיצוב קסטום (הצמדה לשוליים כדי למנוע הצגת קוד גולמי)
-st.markdown("""
-<style>
+# 2. הזרקת עיצוב קסטום (ללא רווחים בתחילת שורות ה-HTML)
+st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap');
 
 html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
@@ -110,8 +109,7 @@ input {
     border-radius: 4px 12px 12px 4px;
     margin-bottom: 15px;
 }
-</style>
-""", unsafe_allow_html=True)
+</style>""", unsafe_allow_html=True)
 
 # 3. כותרת הטרמינל
 st.markdown('<h1 style="text-align: center; color: #38bdf8; font-size: 36px; margin-bottom: 5px;">⚡ טבלת מעקב ממונפות וליבה</h1>', unsafe_allow_html=True)
@@ -141,21 +139,21 @@ asset_pairs = [
     {"base": "XLF", "leveraged": "FAS", "name": "💰 פיננסים (XLF / FAS)"}
 ]
 
-# בניית שלד הטבלה ב-HTML
+# בניית שלד הטבלה ב-HTML (מוצמד לשמאל כדי למנוע הפיכה לבלוק קוד)
 table_html = """
 <table class="terminal-table">
-    <thead>
-        <tr>
-            <th>צמד נכסים (בסיס / ממונף)</th>
-            <th>ירידת הבסיס מהשיא</th>
-            <th>⚡ מנות שנרכשו מהממונף</th>
-            <th>💰 הון מושקע בפוזיציה</th>
-            <th>🎯 מחירי יעד למנה הבאה</th>
-            <th title="מדד RSI מתורגם למצב פסיכולוגי">🌡️ מדחום מומנטום</th>
-            <th>🔮 המלצה לביצוע ללא רגש</th>
-        </tr>
-    </thead>
-    <tbody>
+<thead>
+<tr>
+<th>צמד נכסים (בסיס / ממונף)</th>
+<th>ירידת הבסיס מהשיא</th>
+<th>⚡ מנות שנרכשו מהממונף</th>
+<th>💰 הון מושקע בפוזיציה</th>
+<th>🎯 מחירי יעד למנה הבאה</th>
+<th title="מדד RSI מתורגם למצב פסיכולוגי">🌡️ מדחום מומנטום</th>
+<th>🔮 המלצה לביצוע ללא רגש</th>
+</tr>
+</thead>
+<tbody>
 """
 
 for pair in asset_pairs:
@@ -203,20 +201,19 @@ for pair in asset_pairs:
             else:
                 rec_text = f"<td style='color: #a1a1aa;'>⏳ ממתין למדרגה {next_tranche_num} ב-{next_base_drop_target}%</td>"
                 
-            table_html += f"""
-            <tr>
-                <td style="font-size: 18px; font-weight: bold; color: #38bdf8;">{pair["name"]}</td>
-                <td><span class="badge-drop">{round(base_drop, 1)}%</span></td>
-                <td><span class="badge-tranche">{tranches_bought} מנות בפנים</span></td>
-                <td><span class="badge-money">${total_deployed:,}</span></td>
-                <td style="font-size: 16px; line-height: 1.5;">
-                    <b style="color: #94a3b8;">בסיס ({pair["base"]}):</b> <b style="color: #ffffff;">${round(next_base_price, 2)}</b><br>
-                    <b style="color: #94a3b8;">ממונף ({pair["leveraged"]}):</b> <b style="color: #34d399;">${round(next_lev_price, 2)}</b>
-                </td>
-                <td>{momentum_status}</td>
-                {rec_text}
-            </tr>
-            """
+            # הזרקת שורות ה-HTML ללא שום רווחים בתחילת השורה
+            table_html += f"""<tr>
+<td style="font-size: 18px; font-weight: bold; color: #38bdf8;">{pair["name"]}</td>
+<td><span class="badge-drop">{round(base_drop, 1)}%</span></td>
+<td><span class="badge-tranche">{tranches_bought} מנות בפנים</span></td>
+<td><span class="badge-money">${total_deployed:,}</span></td>
+<td style="font-size: 16px; line-height: 1.5;">
+<b style="color: #94a3b8;">בסיס ({pair["base"]}):</b> <b style="color: #ffffff;">${round(next_base_price, 2)}</b><br>
+<b style="color: #94a3b8;">M ממונף ({pair["leveraged"]}):</b> <b style="color: #34d399;">${round(next_lev_price, 2)}</b>
+</td>
+<td>{momentum_status}</td>
+{rec_text}
+</tr>"""
     except Exception as e:
         continue
 
@@ -225,7 +222,7 @@ table_html += "</tbody></table>"
 # הזרקת הטבלה המעוצבת
 st.markdown(table_html, unsafe_allow_html=True)
 
-# 6. ספר חוקים הנדסי
+# 6. ספר חוקים הנדסי לקבוצה
 st.write("")
 st.write("---")
 st.markdown('### 🛠️ מדריך הפעלה מהיר לקבוצה')
@@ -233,17 +230,13 @@ st.markdown('### 🛠️ מדריך הפעלה מהיר לקבוצה')
 col_guide1, col_guide2 = st.columns(2)
 
 with col_guide1:
-    st.markdown("""
-<div class="playbook-card">
-    <h4 style="font-size: 19px; color: #38bdf8; margin-bottom: 8px;">📐 חוק המנות והמרווח הדינמי</h4>
-    <p style="font-size: 16px; color: #cbd5e1;">הטבלה מחלקת את השוק לרצועות קשיחות לבחירתך. המנות שנקנות הן <b>אך ורק של הנייר הממונף (TQQQ, SOXL וכו')</b>. המערכת סופרת כמה מנות היית אמור לקנות באופן קר ומכפילה בתקציב שלך כדי להציג את ההון הממושך בפוזיציה.</p>
-</div>
-""", unsafe_allow_html=True)
+    st.markdown("""<div class="playbook-card">
+<h4 style="font-size: 19px; color: #38bdf8; margin-bottom: 8px;">📐 חוק המנות והמרווח הדינמי</h4>
+<p style="font-size: 16px; color: #cbd5e1;">הטבלה מחלקת את השוק לרצועות קשיחות לבחירתך. המנות שנקנות הן <b>אך ורק של הנייר הממונף (TQQQ, SOXL וכו')</b>. המערכת סופרת כמה מנות היית אמור לקנות באופן קר ומכפילה בתקציב שלך כדי להציג את ההון המושקע בפוזיציה.</p>
+</div>""", unsafe_allow_html=True)
 
 with col_guide2:
-    st.markdown("""
-<div class="playbook-card" style="border-right-color: #34d399;">
-    <h4 style="font-size: 19px; color: #34d399; margin-bottom: 8px;">🎯 טריגר לפי הבסיס - קנייה בממונף</h4>
-    <p style="font-size: 16px; color: #cbd5e1;">עמודת <b>מחירי היעד</b> מציגה לך את שני המחירים במקביל: מחיר היעד של הבסיס שמהווה את הטריגר הראשי, ומחיר היעד המשוער של הממונף באותה נקודה בדיוק (מחושב ביחס של פי 3 ירידה מהטופ שלו) כדי שתוכל להציב פקודות בהתאם.</p>
-</div>
-""", unsafe_allow_html=True)
+    st.markdown("""<div class="playbook-card" style="border-right-color: #34d399;">
+<h4 style="font-size: 19px; color: #34d399; margin-bottom: 8px;">🎯 טריגר לפי הבסיס - קנייה בממונף</h4>
+<p style="font-size: 16px; color: #cbd5e1;">עמודת <b>מחירי היעד</b> מציגה לך את שני המחירים במקביל: מחיר היעד של הבסיס שמהווה את הטריגר הראשי, ומחיר היעד המשוער של הממונף באותה נקודה בדיוק (מחושב ביחס של פי 3 ירידה מהטופ שלו) כדי שתוכל להציב פקודות בהתאם.</p>
+</div>""", unsafe_allow_html=True)
