@@ -6,13 +6,13 @@ import ta
 import math
 from streamlit_autorefresh import st_autorefresh
 
-# 1. הגדרת תצורת דף PRO
+# 1. הגדרת תצורת דף PRO (חייב להיות ראשון)
 st.set_page_config(page_title="DCA Matrix // Leveraged Terminal", layout="wide")
 
-# רענון אוטומטי בכל 65 שניות כדי להישאר תמיד מתחת למגבלת ה-8 קרדיטים לדקה של Twelve Data
+# רענון אוטומטי בכל 65 שניות לשמירה על עדכניות
 st_autorefresh(interval=65000, key="matrix_refresh")
 
-# 2. הזרקת עיצוב קסטום נקי ומיושר
+# 2. הזרקת עיצוב קסטום נקי ללא מסגרות וקווים מיותרים
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap');
 
@@ -104,11 +104,11 @@ input {
 }
 </style>""", unsafe_allow_html=True)
 
-# 3. כותרת הטרמינל והסבר נקי
+# 3. כותרת הטרמינל
 st.markdown('<h1 style="text-align: center; color: #38bdf8; font-size: 36px; margin-bottom: 5px;">⚡ טבלת מעקב ממונפות וליבה</h1>', unsafe_allow_html=True)
 st.markdown('<p style="text-align: center; color: #94a3b8; font-size: 20px; margin-bottom: 30px;">מערכת אלגוריתמית מתקדמת לניהול מנות איסוף ומיצוע הנדסי (DCA) ללא רגש</p>', unsafe_allow_html=True)
 
-# 4. לוח בקרה אינטראקטיבי (ללא עטיפות HTML שבורות שיוצרות קווים ומסגרות)
+# 4. לוח בקרה אינטראקטיבי
 col_param1, col_param2, col_param3 = st.columns(3)
 
 with col_param1:
@@ -122,7 +122,17 @@ with col_param3:
     st.write("")
     st.markdown("<p style='color: #34d399; font-weight: 800; text-align: center; font-size: 20px; margin-top: 5px;'>🟢 שערי אמת מסונכרנים בלייב</p>", unsafe_allow_html=True)
 
-# 5. הגדרת זוגות המטריצה
+# 5. פונקציית משיכת נתונים עם הגנת נעילת קארדיטים (Cache ל-60 שניות)
+@st.cache_data(ttl=60)
+def get_realtime_prices(symbols_string, api_key):
+    url = f"https://api.twelvedata.com/price?symbol={symbols_string}&apikey={api_key}"
+    try:
+        res = requests.get(url).json()
+        return res
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# הגדרת נכסים
 asset_pairs = [
     {"base": "QQQ", "leveraged": "TQQQ", "name": "📈 נאסד\"ק (QQQ / TQQQ)"},
     {"base": "SOXX", "leveraged": "SOXL", "name": "💻 שבבים (SOXX / SOXL)"},
@@ -134,8 +144,7 @@ API_KEY = "1541f1cd2a48488f83cfc193a9ada724"
 all_symbols = ["QQQ", "TQQQ", "SOXX", "SOXL", "SPY", "UPRO", "XLF", "FAS"]
 symbols_str = ",".join(all_symbols)
 
-# פנייה לצינור /price החסכוני של Twelve Data
-price_url = f"https://api.twelvedata.com/price?symbol={symbols_str}&apikey={API_KEY}"
+price_response = get_realtime_prices(symbols_str, API_KEY)
 
 table_html = """
 <table class="terminal-table">
@@ -154,12 +163,10 @@ table_html = """
 <tbody>
 """
 
-try:
-    price_response = requests.get(price_url).json()
-    
-    if "status" in price_response and price_response["status"] == "error":
-        st.error(f"❌ שגיאת מכסת API מצד Twelve Data: {price_response.get('message')}")
-    else:
+if "status" in price_response and price_response["status"] == "error":
+    st.error(f"❌ שגיאת מכסת API מצד Twelve Data: {price_response.get('message')}")
+else:
+    try:
         for pair in asset_pairs:
             base_realtime = price_response.get(pair["base"], {})
             lev_realtime = price_response.get(pair["leveraged"], {})
@@ -168,17 +175,16 @@ try:
                 base_curr = float(base_realtime["price"])
                 lev_curr = float(lev_realtime["price"])
                 
-                # משיכת היסטוריה מ-yfinance ללא התאמות דיבידנדים עבור הציקלים והשיא
+                # היסטוריה מ-yfinance ללא הגבלת מכסות עבור חישובי שיא ו-RSI
                 base_stock = yf.Ticker(pair["base"])
                 df_base = base_stock.history(period="6mo", interval="1d", auto_adjust=False)
                 
                 if len(df_base) > 14:
                     base_max = max(df_base['High'].max(), base_curr)
-                    
                     base_drop = ((base_curr - base_max) / base_max) * 100
                     abs_drop = abs(base_drop)
                     
-                    # הזרקת השער החי לחישוב ה-RSI הנוכחי
+                    # הזרקת שער הלייב לתוך ה-RSI
                     close_series = df_base['Close'].copy()
                     close_series.iloc[-1] = base_curr
                     rsi = ta.momentum.rsi(close_series, window=14).iloc[-1]
@@ -222,17 +228,14 @@ try:
 <td>{momentum_status}</td>
 {rec_text}
 </tr>"""
-except Exception as e:
-    st.error(f"שגיאה בעיבוד הנתונים הטרמינלי: {e}")
+    except Exception as e:
+        st.error(f"שגיאה בעיבוד הנתונים הטרמינלי: {e}")
 
 table_html += "</tbody></table>"
-
-# הזרקת הטבלה למסך
 st.markdown(table_html, unsafe_allow_html=True)
 
 # 6. ספר חוקים הנדסי לקבוצה
 st.write("")
-st.write("---")
 st.markdown('### 🛠️ מדריך הפעלה מהיר לקבוצה')
 
 col_guide1, col_guide2 = st.columns(2)
@@ -240,7 +243,7 @@ col_guide1, col_guide2 = st.columns(2)
 with col_guide1:
     st.markdown("""<div class="playbook-card">
 <h4 style="font-size: 19px; color: #38bdf8; margin-bottom: 8px;">📐 ארכיטקטורה היברידית חסכונית</h4>
-<p style="font-size: 16px; color: #cbd5e1;">השיאים ההיסטוריים מחושבים באמצעות מנוע חינמי נטול הגבלות, בעוד שמחירי הניירות ברגע זה מוזרקים בלייב מ-Twelve Data כדי לשמור על אפס שניות דיליי בלי לחרוג מהמכסה.</p>
+<p style="font-size: 16px; color: #cbd5e1;">השיאים ההיסטוריים מחושבים באמצעות מנוע חינמי נטול הגבלות, בעוד שמחירי הניירות ברגע זה מוזרקים בלייב מ-Twelve Data כדי לשמור על אפס שניות דיליי.</p>
 </div>""", unsafe_allow_html=True)
 
 with col_guide2:
