@@ -22,12 +22,23 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
     background-color: #05070f !important;
     color: #ffffff !important;
     font-family: 'Assistant', sans-serif !important;
+}
+
+/* יישור מימין לשמאל נקי של גוף האפליקציה ללא שבירת רכיבים */
+[data-testid="stAppViewContainer"] {
     direction: RTL !important;
     text-align: right !important;
 }
 
 h1, h2, h3, h4, h5 { color: #f8fafc !important; font-weight: 800 !important; }
-label, p, span { font-size: 16px !important; font-weight: 600 !important; color: #cbd5e1 !important; }
+
+/* תיקון הכיתוב האנכי - הגדרה ממוקדת לטקסטים בלבד ללא פגיעה באייקונים וחיצים */
+.stMarkdown p, label { 
+    font-size: 16px !important; 
+    font-weight: 600 !important; 
+    color: #cbd5e1 !important; 
+    text-align: right !important;
+}
 
 /* לוח פקודות עליון - Action Items */
 .action-box {
@@ -38,7 +49,7 @@ label, p, span { font-size: 16px !important; font-weight: 600 !important; color:
     text-align: center;
 }
 .action-safe { border: 2px solid #10b981; background-color: #064e3b; }
-.action-alert { border: 2px solid #ef4444; background-color: #450a0a; animation: pulse 2s infinite; }
+.action-alert { border: 2px solid #ef4444; background-color: #450a0a; }
 
 /* כרטיסי אקורדיון מעוצבים כשורות טרמינל */
 .streamlit-expanderHeader {
@@ -120,7 +131,7 @@ def fetch_ticker_news(tickers_list):
             url = f"https://feeds.finance.yahoo.com/rss.2.0/headline?s={t}"
             res = requests.get(url, timeout=4)
             root = ET.fromstring(res.content)
-            for item in root.findall('.//item')[:1]: # מבזק 1 ממוקד לכל נייר לשמירה על ניקיון
+            for item in root.findall('.//item')[:1]:
                 title_en = item.find('title').text
                 link = item.find('link').text
                 combined_stories.append({"ticker": t, "title": translate_headline(title_en), "link": link})
@@ -164,7 +175,6 @@ else:
                 abs_drop = abs(base_drop)
                 lev_drop = ((lev_curr - lev_max) / lev_max) * 100
                 
-                # חישוב אוטומטי מלא של המצב ההנדסי בשוק
                 auto_tranches = math.floor(abs_drop / drop_interval)
                 next_tranche_num = auto_tranches + 1
                 next_base_drop_target = next_tranche_num * drop_interval
@@ -176,17 +186,14 @@ else:
                 if trigger_active:
                     any_active_trigger = True
                 
-                # חישוב אחוז ההתקדמות בתוך המדרגה הנוכחית למד-המתח הויזואלי
                 current_interval_progress = ((abs_drop - (auto_tranches * drop_interval)) / drop_interval) * 100
                 current_interval_progress = max(0, min(100, current_interval_progress))
                 
-                # ממוצעים ואינדיקטורים מוסתרים
                 ema_200 = ta.trend.ema_indicator(df_base['Close'], window=200).iloc[-1]
                 ema_distance = ((base_curr - ema_200) / ema_200) * 100
                 rsi = ta.momentum.rsi(df_base['Close'], window=14).iloc[-1]
                 mfi = ta.volume.money_flow_index(df_base['High'], df_base['Low'], df_base['Close'], df_base['Volume'], window=14).iloc[-1]
                 
-                # אתחול ה-State האישי לניהול האוטומטי/ידני
                 if f"{lev}_override_active" not in st.session_state:
                     st.session_state[f"{lev}_override_active"] = False
                 if f"{lev}_tranches_count" not in st.session_state:
@@ -194,7 +201,6 @@ else:
                 if f"{lev}_manual_avg" not in st.session_state:
                     st.session_state[f"{lev}_manual_avg"] = 0.0
                 
-                # אם המשתמש לא שינה ידנית, המערכת מסתנכרנת אוטומטית לחלוטין לשוק
                 if not st.session_state[f"{lev}_override_active"]:
                     st.session_state[f"{lev}_tranches_count"] = auto_tranches
                 
@@ -228,7 +234,6 @@ else:
         base = asset["pair"]["base"]
         name = asset["pair"]["name"]
         
-        # בניית סטטוס תמציתי לכותרת
         sign = "+" if asset["lev_change"] > 0 else ""
         status_label = "🔴 טריגר רכישה!" if asset["trigger_active"] else "⏳ ממתין במדרגה"
         title_text = f"{name} | מחיר: ${asset['lev_curr']:.2f} ({sign}{asset['lev_change']:.2f}%) | מצב: {status_label}"
@@ -241,21 +246,18 @@ else:
                 st.markdown("<h4 style='color:#38bdf8; margin-top:0;'>📊 נתוני שוק והנדסה</h4>", unsafe_allow_html=True)
                 st.markdown(f"מרחק נוכחי משיא כל הזמנים: **`{asset['base_drop']:.1f}%`**")
                 
-                # מד מתח ויזואלי לקראת המנה הבאה
                 st.markdown(f"<p style='font-size:14px; margin-bottom:2px;'>🔋 מד-מתח לקראת מנה {asset['next_tranche_num']} (יעד {asset['next_base_drop_target']}%):</p>", unsafe_allow_html=True)
                 st.markdown(f"""<div class="progress-bar-container">
                     <div class="progress-bar-fill" style="width: {asset['progress_bar']}%;"></div>
                 </div>""", unsafe_allow_html=True)
                 st.markdown(f"<p style='font-size:13px; color:#94a3b8; margin-top:0;'>מרחק לטריגר: {asset['distance_to_next']:.2f}% במדד הבסיס</p>", unsafe_allow_html=True)
                 
-                # הנחיית פעולה ברורה כולל כמויות מניות (Share Calculator)
                 shares_to_buy = round(tranche_size / asset['lev_curr'])
                 if asset["trigger_active"]:
                     st.error(f"💥 **הוראת ביצוע:** קנה כעת **{shares_to_buy} מניות** של {lev} (שווה ערך ל-${tranche_size:,}) בשער בסיס ${asset['next_base_price']:.2f}")
                 else:
                     st.markdown(f"🎯 שער טריגר עתידי לקנייה: **${asset['next_base_price']:.2f}** (בנכס {base})")
                 
-                # נתונים מתקדמים מוסתרים כדי לא ליצור בלאגן בעיניים
                 with st.expander("🔬 מדדים טכניים וזרימת הון"):
                     st.write(f"• מרחק ממוצע נע 200 השנתי: {asset['ema_distance']:.1f}%")
                     st.write(f"• מדד עוצמה יחסית RSI: {asset['rsi']:.0f}")
@@ -265,20 +267,17 @@ else:
             with col_left:
                 st.markdown("<h4 style='color:#34d399; margin-top:0;'>💼 הפוזיציה והשחרורים שלך</h4>", unsafe_allow_html=True)
                 
-                # שליטה ידנית/אוטומטית עם לחצן איפוס חכם
                 c_input1, c_input2 = st.columns(2)
                 with c_input1:
                     active_t = st.number_input("מנות בתיק:", min_value=0, max_value=20, value=int(st.session_state[f"{lev}_tranches_count"]), key=f"{lev}_input_t")
                 with c_input2:
                     avg_c = st.number_input("מחיר ממוצע ($):", min_value=0.0, value=float(st.session_state[f"{lev}_manual_avg"]), key=f"{lev}_input_a", step=0.5)
                 
-                # זיהוי שינוי ועדכון ה-Override
                 if active_t != st.session_state[f"{lev}_tranches_count"] or avg_c != st.session_state[f"{lev}_manual_avg"]:
                     st.session_state[f"{lev}_override_active"] = True
                     st.session_state[f"{lev}_tranches_count"] = active_t
                     st.session_state[f"{lev}_manual_avg"] = avg_c
                 
-                # כפתור חזרה לטייס אוטומטי במידה והופעל override
                 if st.session_state[f"{lev}_override_active"]:
                     st.markdown("<p style='color:#fbbf24; font-size:13px; margin:0;'>⚠️ מצב עריכה ידנית פעיל</p>", unsafe_allow_html=True)
                     if st.button("🔄 חזור לסנכרון אוטומטי מלא", key=f"{lev}_reset_btn"):
@@ -289,22 +288,18 @@ else:
                 
                 st.markdown("---")
                 
-                # הצגת מפת יעדי המכירה בצורה פתוחה, נקייה וברורה
                 current_active_tranches = st.session_state[f"{lev}_tranches_count"]
                 if current_active_tranches > 0:
                     st.markdown("<h5 style='color:#fbbf24; margin-bottom:10px;'>🎯 מפת פקודות מכירה עתידיות (Take Profit Matrix)</h5>", unsafe_allow_html=True)
                     
-                    # שימוש במחיר ממוצע מוזן או שער שוק נוכחי
                     reference_price = st.session_state[f"{lev}_manual_avg"] if st.session_state[f"{lev}_manual_avg"] > 0 else asset["lev_curr"]
                     
-                    # קביעת המדרגות האחוזיות לפי חומרת המנות
                     if current_active_tranches == 1: steps, label = [11, 22, 33], "שלישים"
                     elif current_active_tranches == 2: steps, label = [10, 20, 30, 40], "רבעים"
                     elif current_active_tranches == 3: steps, label = [10, 20, 30, 40, 50, 60], "שישיות"
                     elif current_active_tranches == 4: steps, label = [10, 20, 30, 40, 50, 60, 70, 80], "שמיניות"
                     else: steps, label = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100], "עשיריות"
                     
-                    # חישוב יחידות מניה לכל יעד
                     total_shares_owned = round((current_active_tranches * tranche_size) / reference_price)
                     shares_per_step = max(1, round(total_shares_owned / len(steps)))
                     
@@ -324,12 +319,6 @@ st.sidebar.metric("הון מנוצל כולל", f"${total_portfolio_value:,}")
 # 8. פיד חדשות מאקרו מתורגם וממוקד
 ticker_news_list = fetch_ticker_news(["QQQ", "SOXX", "SPY", "XLF"])
 if ticker_news_list:
-    news_html = """<div class="news-container">
-    <div class="news-title">📰 מבזקי מאקרו רלוונטיים (סינון פאניקה)</div>"""
+    st.markdown("### 📰 מבזקי מאקרו רלוונטיים (סינון פאניקה)")
     for story in ticker_news_list:
-        news_html += f"""<div class="news-item">
-            <span class="news-tag">{story['ticker']}</span>
-            <a href="{story['link']}" target="_blank">{story['title']}</a>
-        </div>"""
-    news_html += "</div>"
-    st.markdown(news_html, unsafe_allow_html=True)
+        st.markdown(f"• **{story['ticker']}**: [{story['title']}]({story['link']})")
