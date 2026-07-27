@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import yfinance as yf
 import pandas as pd
 import ta
 import math
@@ -8,10 +9,10 @@ from streamlit_autorefresh import st_autorefresh
 # 1. הגדרת תצורת דף PRO
 st.set_page_config(page_title="DCA Matrix // Leveraged Terminal", layout="wide")
 
-# רענון אוטומטי של המסך בכל 30 שניות לשמירה על נתוני אמת
-st_autorefresh(interval=30000, key="matrix_refresh")
+# רענון אוטומטי בכל 65 שניות כדי להישאר תמיד מתחת למגבלת ה-8 קרדיטים לדקה של Twelve Data
+st_autorefresh(interval=65000, key="matrix_refresh")
 
-# 2. הזרקת עיצוב קסטום (ללא רווחים בתחילת שורות ה-HTML למניעת באגים)
+# 2. הזרקת עיצוב קסטום 
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap');
 
@@ -112,8 +113,8 @@ input {
 </style>""", unsafe_allow_html=True)
 
 # 3. כותרת הטרמינל
-st.markdown('<h1 style="text-align: center; color: #38bdf8; font-size: 36px; margin-bottom: 5px;">⚡ טבלת מעקב ממונפות וליבה (REAL-TIME)</h1>', unsafe_allow_html=True)
-st.markdown('<p style="text-align: center; color: #94a3b8; font-size: 20px; margin-bottom: 30px;">מערכת אלגוריתמית מבוססת מפתחות Twelve Data – אפס דיליי בשערי השוק</p>', unsafe_allow_html=True)
+st.markdown('<h1 style="text-align: center; color: #38bdf8; font-size: 36px; margin-bottom: 5px;">⚡ טבלת מעקב ממונפות וליבה (HYBRID REAL-TIME)</h1>', unsafe_allow_html=True)
+st.markdown('<p style="text-align: center; color: #94a3b8; font-size: 20px; margin-bottom: 30px;">לוגיקה משולבת לעקיפת חסימות קרדיטים – מחירי שוק באפס דיליי</p>', unsafe_allow_html=True)
 
 # 4. לוח בקרה אינטראקטיבי
 st.markdown('<div class="control-panel">', unsafe_allow_html=True)
@@ -128,7 +129,7 @@ with col_param2:
 with col_param3:
     st.write("")
     st.write("")
-    st.markdown("<p style='color: #34d399; font-weight: 800; text-align: center; font-size: 20px; margin-top: 10px;'>🟢 חיבור ישיר ומאובטח פעיל</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #34d399; font-weight: 800; text-align: center; font-size: 20px; margin-top: 10px;'>🟢 מותאם למגבלת 8 Credits/Min</p>", unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
 # 5. הגדרת זוגות המטריצה
@@ -139,11 +140,12 @@ asset_pairs = [
     {"base": "XLF", "leveraged": "FAS", "name": "💰 פיננסים (XLF / FAS)"}
 ]
 
-# משיכת נתונים מרוכזת (Batch) כדי לחסוך בקשות ולמנוע חסימות API
 API_KEY = "1541f1cd2a48488f83cfc193a9ada724"
 all_symbols = ["QQQ", "TQQQ", "SOXX", "SOXL", "SPY", "UPRO", "XLF", "FAS"]
 symbols_str = ",".join(all_symbols)
-url = f"https://api.twelvedata.com/time_series?symbol={symbols_str}&interval=1day&outputsize=130&apikey={API_KEY}"
+
+# פנייה לצינור /price החסכוני (צורך רק 8 קרדיטים לכל הבלוק)
+price_url = f"https://api.twelvedata.com/price?symbol={symbols_str}&apikey={API_KEY}"
 
 table_html = """
 <table class="terminal-table">
@@ -163,61 +165,62 @@ table_html = """
 """
 
 try:
-    response = requests.get(url).json()
+    price_response = requests.get(price_url).json()
     
-    # בדיקה האם הגענו למגבלת ה-API או שיש שגיאה בטוקן
-    if "status" in response and response["status"] == "error":
-        st.error(f"❌ שגיאת API מצד Twelve Data: {response.get('message')}")
+    if "status" in price_response and price_response["status"] == "error":
+        st.error(f"❌ שגיאת מכסת API מצד Twelve Data: {price_response.get('message')}")
     else:
         for pair in asset_pairs:
-            base_data = response.get(pair["base"])
-            lev_data = response.get(pair["leveraged"])
+            # שליפת מחירי הלייב המדויקים מ-Twelve Data
+            base_realtime = price_response.get(pair["base"], {})
+            lev_realtime = price_response.get(pair["leveraged"], {})
             
-            if base_data and "values" in base_data and lev_data and "values" in lev_data:
-                df_base = pd.DataFrame(base_data["values"])
-                df_lev = pd.DataFrame(lev_data["values"])
+            if "price" in base_realtime and "price" in lev_realtime:
+                base_curr = float(base_realtime["price"])
+                lev_curr = float(lev_realtime["price"])
                 
-                # המרת טיפוסי נתונים למספרים
-                for col in ['high', 'close']:
-                    df_base[col] = pd.to_numeric(df_base[col])
-                    df_lev[col] = pd.to_numeric(df_lev[col])
+                # משיכת היסטוריה חינמית ללא מגבלות מ-yfinance עבור השיא וה-RSI
+                base_stock = yf.Ticker(pair["base"])
+                df_base = base_stock.history(period="6mo", interval="1d", auto_adjust=False)
                 
-                # הפיכת סדר הכרונולוגיה לצורך חישוב הציקלים והאינדיקטורים
-                df_base = df_base.iloc[::-1].reset_index(drop=True)
-                
-                base_curr = df_base['close'].iloc[-1]
-                base_max = df_base['high'].max()
-                lev_curr = df_lev['close'].iloc[0] # הערך הראשון במערך המקורי הוא הנוכחי
-                
-                # מתמטיקה ומיקומים במטריצה
-                base_drop = ((base_curr - base_max) / base_max) * 100
-                abs_drop = abs(base_drop)
-                
-                tranches_bought = math.floor(abs_drop / drop_interval)
-                total_deployed = tranches_bought * tranche_size
-                
-                next_tranche_num = tranches_bought + 1
-                next_base_drop_target = next_tranche_num * drop_interval
-                next_base_price = base_max * (1 - (next_base_drop_target / 100))
-                
-                # חישוב RSI מדויק בזמן אמת
-                rsi = ta.momentum.rsi(df_base['close'], window=14).iloc[-1]
-                if rsi < 30:
-                    momentum_status = f"<span style='color: #ef4444; font-weight: bold;'>🔥 מכירת יתר קיצונית ({round(rsi,1)})</span>"
-                elif rsi < 45:
-                    momentum_status = f"<span style='color: #f97316; font-weight: bold;'>📉 מומנטום חלש ({round(rsi,1)})</span>"
-                elif rsi < 60:
-                    momentum_status = f"<span style='color: #94a3b8;'>⚪ נייטרלי לחלוטין ({round(rsi,1)})</span>"
-                else:
-                    momentum_status = f"<span style='color: #22c55e; font-weight: bold;'>📈 מומנטום חזק ({round(rsi,1)})</span>"
-                
-                distance_to_next = next_base_drop_target - abs_drop
-                if distance_to_next <= 0.5:
-                    rec_text = f"<td style='background-color: #78350f; color: #fbbf24; font-weight: bold;'>🚨 פקודה: רכוש מנה {next_tranche_num}!</td>"
-                else:
-                    rec_text = f"<td style='color: #a1a1aa;'>⏳ ממתין למדרגה {next_tranche_num} ב-{next_base_drop_target}%</td>"
-                
-                table_html += f"""<tr>
+                if len(df_base) > 14:
+                    # מציאת השיא האבסולוטי (כולל מחיר הלייב הנוכחי במידה והוא שובר שיא עכשיו)
+                    base_max = max(df_base['High'].max(), base_curr)
+                    
+                    # חישוב אחוז הירידה המדויק בזמן אמת
+                    base_drop = ((base_curr - base_max) / base_max) * 100
+                    abs_drop = abs(base_drop)
+                    
+                    # בניית סדרת מחירים מעודכנת להזרקת מחיר הלייב לתוך ה-RSI
+                    close_series = df_base['Close'].copy()
+                    close_series.iloc[-1] = base_curr
+                    rsi = ta.momentum.rsi(close_series, window=14).iloc[-1]
+                    
+                    # מתמטיקת המטריצה
+                    tranches_bought = math.floor(abs_drop / drop_interval)
+                    total_deployed = tranches_bought * tranche_size
+                    
+                    next_tranche_num = tranches_bought + 1
+                    next_base_drop_target = next_tranche_num * drop_interval
+                    next_base_price = base_max * (1 - (next_base_drop_target / 100))
+                    
+                    # צביעת מדחום המומנטום
+                    if rsi < 30:
+                        momentum_status = f"<span style='color: #ef4444; font-weight: bold;'>🔥 מכירת יתר קיצונית ({round(rsi,1)})</span>"
+                    elif rsi < 45:
+                        momentum_status = f"<span style='color: #f97316; font-weight: bold;'>📉 מומנטום חלש ({round(rsi,1)})</span>"
+                    elif rsi < 60:
+                        momentum_status = f"<span style='color: #94a3b8;'>⚪ נייטרלי לחלוטין ({round(rsi,1)})</span>"
+                    else:
+                        momentum_status = f"<span style='color: #22c55e; font-weight: bold;'>📈 מומנטום חזק ({round(rsi,1)})</span>"
+                    
+                    distance_to_next = next_base_drop_target - abs_drop
+                    if distance_to_next <= 0.5:
+                        rec_text = f"<td style='background-color: #78350f; color: #fbbf24; font-weight: bold;'>🚨 פקודה: רכוש מנה {next_tranche_num}!</td>"
+                    else:
+                        rec_text = f"<td style='color: #a1a1aa;'>⏳ ממתין למדרגה {next_tranche_num} ב-{next_base_drop_target}%</td>"
+                    
+                    table_html += f"""<tr>
 <td style="font-size: 18px; font-weight: bold; color: #38bdf8;">{pair["name"]}</td>
 <td style="font-size: 16px; line-height: 1.5;">
 <b style="color: #94a3b8;">בסיס:</b> ${round(base_curr, 2)}<br>
@@ -235,11 +238,11 @@ try:
 {rec_text}
 </tr>"""
 except Exception as e:
-    st.error(f"שגיאה בתקשורת או בעיבוד הנתונים: {e}")
+    st.error(f"שגיאה בעיבוד הנתונים הטרמינלי: {e}")
 
 table_html += "</tbody></table>"
 
-# הזרקת הטבלה המעוצבת
+# הזרקת הטבלה 
 st.markdown(table_html, unsafe_allow_html=True)
 
 # 6. ספר חוקים הנדסי לקבוצה
@@ -251,12 +254,12 @@ col_guide1, col_guide2 = st.columns(2)
 
 with col_guide1:
     st.markdown("""<div class="playbook-card">
-<h4 style="font-size: 19px; color: #38bdf8; margin-bottom: 8px;">📐 סנכרון שערי אמת (Real-time Raw)</h4>
-<p style="font-size: 16px; color: #cbd5e1;">השערים נמשכים ישירות מ-Twelve Data ללא שום דיליי של 15 דקות וללא מניפולציות של דיבידנדים. המחיר במסך תואם במדויק למחיר השוק הנוכחי.</p>
+<h4 style="font-size: 19px; color: #38bdf8; margin-bottom: 8px;">📐 ארכיטקטורה היברידית חסכונית</h4>
+<p style="font-size: 16px; color: #cbd5e1;">השיאים ההיסטוריים מחושבים באמצעות מנוע חינמי נטול הגבלות, בעוד שמחירי הניירות ברגע זה מוזרקים בלייב מ-Twelve Data כדי לשמור על אפס שניות דיליי בלי לחרוג מהמכסה.</p>
 </div>""", unsafe_allow_html=True)
 
 with col_guide2:
     st.markdown("""<div class="playbook-card" style="border-right-color: #34d399;">
-<h4 style="font-size: 19px; color: #34d399; margin-bottom: 8px;">🎯 ביצוע פקודות בשוק (Market Orders)</h4>
-<p style="font-size: 16px; color: #cbd5e1;">ברגע שמחיר נכס הבסיס חוצה את שער הטריגר המופיע בטבלה, פועלים מיידית ומבצעים רכישה של הנייר הממונף המתאים לפי שווי השוק העדכני שלו באותו רגע בברוקר.</p>
+<h4 style="font-size: 19px; color: #34d399; margin-bottom: 8px;">⏱️ קצב סנכרון המטריצה</h4>
+<p style="font-size: 16px; color: #cbd5e1;">הדף מבצע רענון פנימי קבוע פעם ב-65 שניות כדי לכבד את חוקי השרת החינמיים. כל פעימה מציגה את המחיר המדויק שקיים בשוק באותה השנייה.</p>
 </div>""", unsafe_allow_html=True)
