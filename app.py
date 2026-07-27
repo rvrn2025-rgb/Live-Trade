@@ -139,17 +139,18 @@ asset_pairs = [
     {"base": "XLF", "leveraged": "FAS", "name": "💰 פיננסים (XLF / FAS)"}
 ]
 
-# בניית שלד הטבלה ב-HTML (מוצמד לשמאל כדי למנוע הפיכה לבלוק קוד)
+# בניית שלד הטבלה ב-HTML
 table_html = """
 <table class="terminal-table">
 <thead>
 <tr>
 <th>צמד נכסים (בסיס / ממונף)</th>
+<th>מחיר נוכחי (בסיס / ממונף)</th>
 <th>ירידת הבסיס מהשיא</th>
 <th>⚡ מנות שנרכשו מהממונף</th>
 <th>💰 הון מושקע בפוזיציה</th>
-<th>🎯 מחירי יעד למנה הבאה</th>
-<th title="מדד RSI מתורגם למצב פסיכולוגי">🌡️ מדחום מומנטום</th>
+<th>🎯 טריגר כניסה למנה הבאה</th>
+<th>🌡️ מדחום מומנטום</th>
 <th>🔮 המלצה לביצוע ללא רגש</th>
 </tr>
 </thead>
@@ -158,33 +159,33 @@ table_html = """
 
 for pair in asset_pairs:
     try:
+        # משיכת מחירים נומינליים לא מתואמים (auto_adjust=False) כדי לקבל שערי אמת מדויקים
         base_stock = yf.Ticker(pair["base"])
-        base_hist = base_stock.history(period="6mo", interval="1d")
+        base_hist = base_stock.history(period="6mo", interval="1d", auto_adjust=False)
         
         lev_stock = yf.Ticker(pair["leveraged"])
-        lev_hist = lev_stock.history(period="6mo", interval="1d")
+        lev_hist = lev_stock.history(period="6mo", interval="1d", auto_adjust=False)
         
         if len(base_hist) > 14 and len(lev_hist) > 14:
             base_curr = base_hist['Close'].iloc[-1]
             base_max = base_hist['High'].max()
             
             lev_curr = lev_hist['Close'].iloc[-1]
-            lev_max = lev_hist['High'].max()
             
+            # חישוב אחוז ירידה נומינלי מהטופ הפיזי של הבסיס
             base_drop = ((base_curr - base_max) / base_max) * 100
             abs_drop = abs(base_drop)
             
+            # מתמטיקת מנות
             tranches_bought = math.floor(abs_drop / drop_interval)
             total_deployed = tranches_bought * tranche_size
             
+            # חישוב מחיר היעד של נכס הבסיס בלבד (העוגן המוחלט)
             next_tranche_num = tranches_bought + 1
             next_base_drop_target = next_tranche_num * drop_interval
-            next_lev_drop_target = next_base_drop_target * 3
-            
             next_base_price = base_max * (1 - (next_base_drop_target / 100))
-            next_lev_price = lev_max * (1 - (next_lev_drop_target / 100))
-            if next_lev_price < 0: next_lev_price = 0
             
+            # חישוב RSI ותרגומו למילים
             rsi = ta.momentum.rsi(base_hist['Close'], window=14).iloc[-1]
             if rsi < 30:
                 momentum_status = f"<span style='color: #ef4444; font-weight: bold;'>🔥 מכירת יתר קיצונית ({round(rsi,1)})</span>"
@@ -201,15 +202,19 @@ for pair in asset_pairs:
             else:
                 rec_text = f"<td style='color: #a1a1aa;'>⏳ ממתין למדרגה {next_tranche_num} ב-{next_base_drop_target}%</td>"
                 
-            # הזרקת שורות ה-HTML ללא שום רווחים בתחילת השורה
             table_html += f"""<tr>
 <td style="font-size: 18px; font-weight: bold; color: #38bdf8;">{pair["name"]}</td>
+<td style="font-size: 16px; line-height: 1.5;">
+<b style="color: #94a3b8;">בסיס:</b> ${round(base_curr, 2)}<br>
+<b style="color: #94a3b8;">ממונף:</b> ${round(lev_curr, 2)}
+</td>
 <td><span class="badge-drop">{round(base_drop, 1)}%</span></td>
 <td><span class="badge-tranche">{tranches_bought} מנות בפנים</span></td>
 <td><span class="badge-money">${total_deployed:,}</span></td>
 <td style="font-size: 16px; line-height: 1.5;">
-<b style="color: #94a3b8;">בסיס ({pair["base"]}):</b> <b style="color: #ffffff;">${round(next_base_price, 2)}</b><br>
-<b style="color: #94a3b8;">M ממונף ({pair["leveraged"]}):</b> <b style="color: #34d399;">${round(next_lev_price, 2)}</b>
+<span style="color: #ffffff; font-weight: bold;">כשהבסיס ({pair["base"]}) מגיע ל:</span><br>
+<b style="color: #38bdf8; font-size: 18px;">${round(next_base_price, 2)}</b><br>
+<span style="color: #94a3b8; font-size: 14px;">(קנה את {pair["leveraged"]} במחיר שוק)</span>
 </td>
 <td>{momentum_status}</td>
 {rec_text}
@@ -231,12 +236,12 @@ col_guide1, col_guide2 = st.columns(2)
 
 with col_guide1:
     st.markdown("""<div class="playbook-card">
-<h4 style="font-size: 19px; color: #38bdf8; margin-bottom: 8px;">📐 חוק המנות והמרווח הדינמי</h4>
-<p style="font-size: 16px; color: #cbd5e1;">הטבלה מחלקת את השוק לרצועות קשיחות לבחירתך. המנות שנקנות הן <b>אך ורק של הנייר הממונף (TQQQ, SOXL וכו')</b>. המערכת סופרת כמה מנות היית אמור לקנות באופן קר ומכפילה בתקציב שלך כדי להציג את ההון המושקע בפוזיציה.</p>
+<h4 style="font-size: 19px; color: #38bdf8; margin-bottom: 8px;">📐 חוק המנות והמחיר הנומינלי</h4>
+<p style="font-size: 16px; color: #cbd5e1;">השערים במערכת נמשכים ללא התאמות דיבידנדים (Raw Prices) כדי להבטיח התאמה של 100% למה שאתה רואה בחשבון המסחר שלך. המנות שנרשמות מייצגות את רכישות הנייר הממונף בלבד.</p>
 </div>""", unsafe_allow_html=True)
 
 with col_guide2:
     st.markdown("""<div class="playbook-card" style="border-right-color: #34d399;">
-<h4 style="font-size: 19px; color: #34d399; margin-bottom: 8px;">🎯 טריגר לפי הבסיס - קנייה בממונף</h4>
-<p style="font-size: 16px; color: #cbd5e1;">עמודת <b>מחירי היעד</b> מציגה לך את שני המחירים במקביל: מחיר היעד של הבסיס שמהווה את הטריגר הראשי, ומחיר היעד המשוער של הממונף באותה נקודה בדיוק (מחושב ביחס של פי 3 ירידה מהטופ שלו) כדי שתוכל להציב פקודות בהתאם.</p>
+<h4 style="font-size: 19px; color: #34d399; margin-bottom: 8px;">🎯 עוגן נכס הבסיס (No Leverage Math)</h4>
+<p style="font-size: 16px; color: #cbd5e1;">בגלל שחיקת המינוף היומית, בלתי אפשרי לחשב יעד דולרי מדויק לממונף מראש. לכן, עמודת <b>טריגר הכניסה</b> מציגה את המחיר הדולרי הקשיח של נכס הבסיס (כמו QQQ). ברגע שהוא מגיע לשם - מבצעים קנייה של הממונף במחיר השוק שלו באותו רגע.</p>
 </div>""", unsafe_allow_html=True)
