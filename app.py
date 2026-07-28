@@ -18,12 +18,13 @@ st_autorefresh(interval=65000, key="matrix_live_refresh")
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap');
 
-/* ביטול פסי גלילה אופקיים מיותרים שנוצרים בגלל ה-RTL */
-html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+/* חסימה הרמטית של פסי גלילה אופקיים בכל רבדי המערכת */
+html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], .main, .block-container, [data-testid="stMain"] {
     background-color: #05070f !important;
     color: #ffffff !important;
     font-family: 'Assistant', sans-serif !important;
     overflow-x: hidden !important; 
+    max-width: 100vw !important;
 }
 
 /* יישור מימין לשמאל נקי של גוף האפליקציה */
@@ -50,7 +51,6 @@ h1, h2, h3, h4, h5 { color: #f8fafc !important; font-weight: 800 !important; }
     margin-bottom: 25px;
     text-align: center;
 }
-.action-safe { border: 2px solid #10b981; background-color: #064e3b; }
 .action-alert { border: 2px solid #ef4444; background-color: #450a0a; }
 
 /* כרטיסי אקורדיון מעוצבים כשורות טרמינל */
@@ -218,16 +218,11 @@ else:
                 total_portfolio_tranches += st.session_state[f"{lev}_tranches_count"]
                 total_portfolio_value += (st.session_state[f"{lev}_tranches_count"] * tranche_size)
 
-    # 5. קוביות "מה עושים היום?" (Action Items) בראש העמוד
+    # 5. קוביות "מה עושים היום?" (Action Items) - מופיע רק כשיש טריגר פעיל באמת
     if any_active_trigger:
         st.markdown("""<div class="action-box action-alert">
             <h3 style="margin:0; color:#ffffff;">🚨 פקודות ביצוע אקטיביות ממתינות לך!</h3>
             <p style="margin:5px 0 0 0; color:#fca5a5; font-size:16px;">אחד או יותר מהנכסים הגיע למדרגת קנייה הנדסית. פתח את הנכסים המסומנים באדום לביצוע.</p>
-        </div>""", unsafe_allow_html=True)
-    else:
-        st.markdown("""<div class="action-box action-safe">
-            <h3 style="margin:0; color:#ffffff;">🟢 מטריצה בשגרה - אין פקודות ביצוע להיום</h3>
-            <p style="margin:5px 0 0 0; color:#a7f3d0; font-size:16px;">השוק לא הגיע למדרגות קיצון חדשות. המערכת תתריע כשיש טריגר.</p>
         </div>""", unsafe_allow_html=True)
 
     # 6. הצגת כרטיסי הנכסים במבנה אקורדיון נקי ומפוצל
