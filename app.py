@@ -182,6 +182,9 @@ else:
                 next_base_drop_target = next_tranche_num * drop_interval
                 next_base_price = base_max * (1 - (next_base_drop_target / 100))
                 
+                # חישוב מחיר יעד משוער לממונף (לפי מינוף ממוצע של פי 3)
+                next_lev_price = lev_max * (1 - ((next_base_drop_target * 3) / 100))
+                
                 distance_to_next = next_base_drop_target - abs_drop
                 trigger_active = distance_to_next <= 0.5
                 
@@ -200,17 +203,15 @@ else:
                     st.session_state[f"{lev}_override_active"] = False
                 if f"{lev}_tranches_count" not in st.session_state:
                     st.session_state[f"{lev}_tranches_count"] = auto_tranches
-                if f"{lev}_manual_avg" not in st.session_state:
-                    st.session_state[f"{lev}_manual_avg"] = 0.0
                 
                 if not st.session_state[f"{lev}_override_active"]:
                     st.session_state[f"{lev}_tranches_count"] = auto_tranches
                 
                 processed_assets.append({
                     "pair": pair, "base_curr": base_curr, "lev_curr": lev_curr, "lev_change": lev_change,
-                    "base_max": base_max, "base_drop": base_drop, "lev_drop": lev_drop,
+                    "base_max": base_max, "lev_max": lev_max, "base_drop": base_drop, "lev_drop": lev_drop,
                     "auto_tranches": auto_tranches, "next_tranche_num": next_tranche_num,
-                    "next_base_price": next_base_price, "next_base_drop_target": next_base_drop_target,
+                    "next_base_price": next_base_price, "next_lev_price": next_lev_price, "next_base_drop_target": next_base_drop_target,
                     "distance_to_next": distance_to_next, "trigger_active": trigger_active,
                     "progress_bar": current_interval_progress, "ema_distance": ema_distance, "rsi": rsi, "mfi": mfi
                 })
@@ -218,7 +219,7 @@ else:
                 total_portfolio_tranches += st.session_state[f"{lev}_tranches_count"]
                 total_portfolio_value += (st.session_state[f"{lev}_tranches_count"] * tranche_size)
 
-    # 5. קוביות "מה עושים היום?" (Action Items) - מופיע רק כשיש טריגר פעיל באמת
+    # 5. קוביות התראה עליונה - רק כשיש פקודת ביצוע אקטיבית
     if any_active_trigger:
         st.markdown("""<div class="action-box action-alert">
             <h3 style="margin:0; color:#ffffff;">🚨 פקודות ביצוע אקטיביות ממתינות לך!</h3>
@@ -238,58 +239,56 @@ else:
         with st.expander(title_text, expanded=asset["trigger_active"]):
             col_right, col_left = st.columns(2)
             
-            # --- טור ימין: ניתוח מצב השוק והנדסת מדרגות ---
+            # --- טור ימין: מחיר כניסה הבא ונתוני שוק ---
             with col_right:
-                st.markdown("<h4 style='color:#38bdf8; margin-top:0;'>📊 נתוני שוק והנדסה</h4>", unsafe_allow_html=True)
+                st.markdown("<h4 style='color:#38bdf8; margin-top:0;'>🎯 יעדי כניסה (קנייה)</h4>", unsafe_allow_html=True)
                 st.markdown(f"מרחק נוכחי משיא כל הזמנים: **`{asset['base_drop']:.1f}%`**")
                 
                 st.markdown(f"<p style='font-size:14px; margin-bottom:2px;'>🔋 מד-מתח לקראת מנה {asset['next_tranche_num']} (יעד {asset['next_base_drop_target']}%):</p>", unsafe_allow_html=True)
                 st.markdown(f"""<div class="progress-bar-container">
                     <div class="progress-bar-fill" style="width: {asset['progress_bar']}%;"></div>
                 </div>""", unsafe_allow_html=True)
-                st.markdown(f"<p style='font-size:13px; color:#94a3b8; margin-top:0;'>מרחק לטריגר: {asset['distance_to_next']:.2f}% במדד הבסיס</p>", unsafe_allow_html=True)
                 
                 shares_to_buy = round(tranche_size / asset['lev_curr'])
                 if asset["trigger_active"]:
-                    st.error(f"💥 **הוראת ביצוע:** קנה כעת **{shares_to_buy} מניות** של {lev} (שווה ערך ל-${tranche_size:,}) בשער בסיס ${asset['next_base_price']:.2f}")
+                    st.error(f"💥 **הוראת ביצוע מיידית:** רכוש כעת **{shares_to_buy} מניות** של {lev}")
                 else:
-                    st.markdown(f"🎯 שער טריגר עתידי לקנייה: **${asset['next_base_price']:.2f}** (בנכס {base})")
-                
-                with st.expander("🔬 מדדים טכניים וזרימת הון"):
-                    st.write(f"• מרחק ממוצע נע 200 השנתי: {asset['ema_distance']:.1f}%")
-                    st.write(f"• מדד עוצמה יחסית RSI: {asset['rsi']:.0f}")
-                    st.write(f"• זרם הון מוסדי MFI: {asset['mfi']:.0f}")
+                    st.markdown(f"📋 **נתוני תחנה הבאה (מנה {asset['next_tranche_num']}):**")
+                    st.markdown(f"• שער יעד בנכס הבסיס ({base}): **`${asset['next_base_price']:.2f}`**")
+                    st.markdown(f"• מחיר פקודה משוער ב-{lev}: **`${asset['next_lev_price']:.2f}`**")
+                    st.markdown(f"• כמות לקנייה בהגעה ליעד: **{shares_to_buy} מניות**")
 
-            # --- טור שמאל: ניהול תיק אישי ומפת פקודות מכירה (Take Profit) ---
+            # --- טור שמאל: מנות אקטיביות ומפת שחרורים אוטומטית ---
             with col_left:
                 st.markdown("<h4 style='color:#34d399; margin-top:0;'>💼 הפוזיציה והשחרורים שלך</h4>", unsafe_allow_html=True)
                 
-                c_input1, c_input2 = st.columns(2)
-                with c_input1:
-                    active_t = st.number_input("מנות בתיק:", min_value=0, max_value=20, value=int(st.session_state[f"{lev}_tranches_count"]), key=f"{lev}_input_t")
-                with c_input2:
-                    avg_c = st.number_input("מחיר ממוצע ($):", min_value=0.0, value=float(st.session_state[f"{lev}_manual_avg"]), key=f"{lev}_input_a", step=0.5)
+                # שדה יחיד לשליטה על כמות מנות (אין יותר שדה מחיר ממוצע!)
+                active_t = st.number_input("מנות אקטיביות בתיק כרגע:", min_value=0, max_value=20, value=int(st.session_state[f"{lev}_tranches_count"]), key=f"{lev}_input_t")
                 
-                if active_t != st.session_state[f"{lev}_tranches_count"] or avg_c != st.session_state[f"{lev}_manual_avg"]:
+                if active_t != st.session_state[f"{lev}_tranches_count"]:
                     st.session_state[f"{lev}_override_active"] = True
                     st.session_state[f"{lev}_tranches_count"] = active_t
-                    st.session_state[f"{lev}_manual_avg"] = avg_c
                 
                 if st.session_state[f"{lev}_override_active"]:
                     st.markdown("<p style='color:#fbbf24; font-size:13px; margin:0;'>⚠️ מצב עריכה ידנית פעיל</p>", unsafe_allow_html=True)
-                    if st.button("🔄 חזור לסנכרון אוטומטי מלא", key=f"{lev}_reset_btn"):
+                    if st.button("🔄 חזור לטייס אוטומטי", key=f"{lev}_reset_btn"):
                         st.session_state[f"{lev}_override_active"] = False
                         st.session_state[f"{lev}_tranches_count"] = asset["auto_tranches"]
-                        st.session_state[f"{lev}_manual_avg"] = 0.0
                         st.rerun()
                 
                 st.markdown("---")
                 
                 current_active_tranches = st.session_state[f"{lev}_tranches_count"]
                 if current_active_tranches > 0:
-                    st.markdown("<h5 style='color:#fbbf24; margin-bottom:10px;'>🎯 מפת פקודות מכירה עתידיות (Take Profit Matrix)</h5>", unsafe_allow_html=True)
+                    st.markdown("<h5 style='color:#fbbf24; margin-bottom:10px;'>🎯 מפת פקודות מכירה (Take Profit)</h5>", unsafe_allow_html=True)
                     
-                    reference_price = st.session_state[f"{lev}_manual_avg"] if st.session_state[f"{lev}_manual_avg"] > 0 else asset["lev_curr"]
+                    # חישוב מתמטי אוטומטי לחלוטין של ממוצע המדרגות שנפרצו (מבטל את הצורך בהזנה ידנית)
+                    theoretical_prices = []
+                    for i in range(1, current_active_tranches + 1):
+                        lev_tranche_drop = i * drop_interval * 3
+                        theoretical_prices.append(asset["lev_max"] * (1 - (lev_tranche_drop / 100)))
+                    
+                    auto_calculated_avg = sum(theoretical_prices) / len(theoretical_prices)
                     
                     if current_active_tranches == 1: steps, label = [11, 22, 33], "שלישים"
                     elif current_active_tranches == 2: steps, label = [10, 20, 30, 40], "רבעים"
@@ -297,16 +296,16 @@ else:
                     elif current_active_tranches == 4: steps, label = [10, 20, 30, 40, 50, 60, 70, 80], "שמיניות"
                     else: steps, label = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100], "עשיריות"
                     
-                    total_shares_owned = round((current_active_tranches * tranche_size) / reference_price)
+                    total_shares_owned = round((current_active_tranches * tranche_size) / auto_calculated_avg)
                     shares_per_step = max(1, round(total_shares_owned / len(steps)))
                     
-                    st.markdown(f"<p style='font-size:13px; color:#94a3b8;'>חלוקה מומלצת לפי כמות מנות: <b>{label}</b> (כ-{shares_per_step} מניות ליעד)</p>", unsafe_allow_html=True)
+                    st.markdown(f"<p style='font-size:13px; color:#94a3b8; margin-top:0;'>ממוצע גריד מחושב: <b>${auto_calculated_avg:.2f}</b> | חלוקה: <b>{label}</b> ({shares_per_step} מניות ליעד)</p>", unsafe_allow_html=True)
                     
                     for i, step in enumerate(steps):
-                        target_price = reference_price * (1 + step / 100)
-                        st.markdown(f"📍 **יעד {i+1} (+{step}%):** למכור **{shares_per_step} מניות** בשער **`${target_price:.2f}`**")
+                        target_price = auto_calculated_avg * (1 + step / 100)
+                        st.markdown(f"📍 **יעד {i+1} (+{step}%):** מכור **{shares_per_step} מניות** בשער **`${target_price:.2f}`**")
                 else:
-                    st.markdown("<span style='color:#94a3b8; font-size:14px;'>אין מנות פעילות בתיק כרגע. יעדי המכירה יופיעו כאן אוטומטית.</span>", unsafe_allow_html=True)
+                    st.markdown("<span style='color:#94a3b8; font-size:14px;'>אין מנות פעילות בתיק כרגע. ברגע שהשוק ירד ויבוצע איסוף, יעדי המכירה יופיעו כאן אוטומטית.</span>", unsafe_allow_html=True)
 
 # 7. סרגל צדי לסיכום הון כולל
 st.sidebar.markdown("### 📊 סיכום הון במטריצה")
