@@ -18,13 +18,15 @@ st_autorefresh(interval=65000, key="matrix_live_refresh")
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap');
 
+/* ביטול פסי גלילה אופקיים מיותרים שנוצרים בגלל ה-RTL */
 html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
     background-color: #05070f !important;
     color: #ffffff !important;
     font-family: 'Assistant', sans-serif !important;
+    overflow-x: hidden !important; 
 }
 
-/* יישור מימין לשמאל נקי של גוף האפליקציה ללא שבירת רכיבים */
+/* יישור מימין לשמאל נקי של גוף האפליקציה */
 [data-testid="stAppViewContainer"] {
     direction: RTL !important;
     text-align: right !important;
@@ -32,7 +34,7 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
 
 h1, h2, h3, h4, h5 { color: #f8fafc !important; font-weight: 800 !important; }
 
-/* תיקון הכיתוב האנכי - הגדרה ממוקדת לטקסטים בלבד ללא פגיעה באייקונים וחיצים */
+/* תיקון טקסטים - הגדרה ממוקדת ללא פגיעה ברכיבי המערכת */
 .stMarkdown p, label { 
     font-size: 16px !important; 
     font-weight: 600 !important; 
@@ -75,11 +77,6 @@ h1, h2, h3, h4, h5 { color: #f8fafc !important; font-weight: 800 !important; }
     transition: width 0.5s ease;
 }
 
-/* תגיות מידע נקיות */
-.badge-ui { display: inline-block; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 13px; margin: 2px; }
-.badge-blue { background-color: #1e3a8a; color: #93c5fd; }
-.badge-orange { background-color: #7c2d12; color: #ffedd5; }
-
 /* התאמות קלט */
 div[data-testid="stNumberInput"] input {
     text-align: right !important;
@@ -97,12 +94,17 @@ asset_pairs = [
     {"base": "XLF", "leveraged": "FAS", "name": "💰 פיננסים (FAS)"}
 ]
 
-# הגדרת פרמטרים בסיסיים
-col_p1, col_p2 = st.columns(2)
+# הגדרת פרמטרים בסיסיים (כולל אפשרות הזנה חופשית לאחוזים)
+col_p1, col_p2, col_p3 = st.columns([2, 2, 2])
 with col_p1:
-    tranche_size = st.number_input("💰 תקציב קבוע למנה בודדת ($):", min_value=100, max_value=100000, value=3000, step=500)
+    tranche_size = st.number_input("💰 תקציב קבוע למנה ($):", min_value=100, max_value=100000, value=3000, step=500)
 with col_p2:
-    drop_interval = st.selectbox("📐 מרווח ירידת הבסיס בין מנות (%):", [3.5, 5.0, 7.0, 10.0], index=0)
+    interval_choice = st.selectbox("📐 מרווח ירידה בין מנות:", ["3.5%", "5.0%", "7.0%", "10.0%", "הזן ידנית..."], index=1)
+with col_p3:
+    if interval_choice == "הזן ידנית...":
+        drop_interval = st.number_input("הזן אחוז מרווח אישי:", min_value=0.5, max_value=50.0, value=6.5, step=0.5)
+    else:
+        drop_interval = float(interval_choice.replace("%", ""))
 
 # 4. פונקציות תשתית ומטמון
 @st.cache_data(ttl=60)
@@ -225,7 +227,7 @@ else:
     else:
         st.markdown("""<div class="action-box action-safe">
             <h3 style="margin:0; color:#ffffff;">🟢 מטריצה בשגרה - אין פקודות ביצוע להיום</h3>
-            <p style="margin:5px 0 0 0; color:#a7f3d0; font-size:16px;">השוק לא הגיע למדרגות קיצון חדשות. שב על הידיים, המערכת תתריע כשיש טריגר.</p>
+            <p style="margin:5px 0 0 0; color:#a7f3d0; font-size:16px;">השוק לא הגיע למדרגות קיצון חדשות. המערכת תתריע כשיש טריגר.</p>
         </div>""", unsafe_allow_html=True)
 
     # 6. הצגת כרטיסי הנכסים במבנה אקורדיון נקי ומפוצל
@@ -309,7 +311,7 @@ else:
                         target_price = reference_price * (1 + step / 100)
                         st.markdown(f"📍 **יעד {i+1} (+{step}%):** למכור **{shares_per_step} מניות** בשער **`${target_price:.2f}`**")
                 else:
-                    st.markdown("<span style='color:#94a3b8; font-size:14px;'>אין מנות פעילות בתיק כרגע. ברגע שיבוצע איסוף, יעדי המכירה יופיעו כאן אוטומטית.</span>", unsafe_allow_html=True)
+                    st.markdown("<span style='color:#94a3b8; font-size:14px;'>אין מנות פעילות בתיק כרגע. יעדי המכירה יופיעו כאן אוטומטית.</span>", unsafe_allow_html=True)
 
 # 7. סרגל צדי לסיכום הון כולל
 st.sidebar.markdown("### 📊 סיכום הון במטריצה")
