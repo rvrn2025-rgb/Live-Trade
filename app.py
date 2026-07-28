@@ -182,7 +182,6 @@ else:
                 next_base_drop_target = next_tranche_num * drop_interval
                 next_base_price = base_max * (1 - (next_base_drop_target / 100))
                 
-                # חישוב מחיר יעד משוער לממונף (לפי מינוף ממוצע של פי 3)
                 next_lev_price = lev_max * (1 - ((next_base_drop_target * 3) / 100))
                 
                 distance_to_next = next_base_drop_target - abs_drop
@@ -262,7 +261,6 @@ else:
             with col_left:
                 st.markdown("<h4 style='color:#34d399; margin-top:0;'>💼 הפוזיציה והשחרורים שלך</h4>", unsafe_allow_html=True)
                 
-                # שדה יחיד לשליטה על כמות מנות (אין יותר שדה מחיר ממוצע!)
                 active_t = st.number_input("מנות אקטיביות בתיק כרגע:", min_value=0, max_value=20, value=int(st.session_state[f"{lev}_tranches_count"]), key=f"{lev}_input_t")
                 
                 if active_t != st.session_state[f"{lev}_tranches_count"]:
@@ -280,9 +278,9 @@ else:
                 
                 current_active_tranches = st.session_state[f"{lev}_tranches_count"]
                 if current_active_tranches > 0:
-                    st.markdown("<h5 style='color:#fbbf24; margin-bottom:10px;'>🎯 מפת פקודות מכירה (Take Profit)</h5>", unsafe_allow_html=True)
+                    st.markdown("<h5 style='color:#fbbf24; margin-bottom:10px;'>🎯 מפת פקודות מכירה (Take Profit) ומדד סיכון</h5>", unsafe_allow_html=True)
                     
-                    # חישוב מתמטי אוטומטי לחלוטין של ממוצע המדרגות שנפרצו (מבטל את הצורך בהזנה ידנית)
+                    # חישוב מתמטי אוטומטי לחלוטין של ממוצע המדרגות שנפרצו
                     theoretical_prices = []
                     for i in range(1, current_active_tranches + 1):
                         lev_tranche_drop = i * drop_interval * 3
@@ -296,14 +294,26 @@ else:
                     elif current_active_tranches == 4: steps, label = [10, 20, 30, 40, 50, 60, 70, 80], "שמיניות"
                     else: steps, label = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100], "עשיריות"
                     
-                    total_shares_owned = round((current_active_tranches * tranche_size) / auto_calculated_avg)
+                    total_invested_capital = current_active_tranches * tranche_size
+                    total_shares_owned = round(total_invested_capital / auto_calculated_avg)
                     shares_per_step = max(1, round(total_shares_owned / len(steps)))
                     
                     st.markdown(f"<p style='font-size:13px; color:#94a3b8; margin-top:0;'>ממוצע גריד מחושב: <b>${auto_calculated_avg:.2f}</b> | חלוקה: <b>{label}</b> ({shares_per_step} מניות ליעד)</p>", unsafe_allow_html=True)
                     
+                    cumulative_cash_returned = 0
                     for i, step in enumerate(steps):
                         target_price = auto_calculated_avg * (1 + step / 100)
+                        step_cash = shares_per_step * target_price
+                        cumulative_cash_returned += step_cash
+                        return_pct = (cumulative_cash_returned / total_invested_capital) * 100
+                        
                         st.markdown(f"📍 **יעד {i+1} (+{step}%):** מכור **{shares_per_step} מניות** בשער **`${target_price:.2f}`**")
+                        
+                        # הדגשה ויזואלית לנקודת איפוס הסיכון (החזרת הקרן)
+                        if return_pct >= 100:
+                            st.markdown(f"<p style='color:#34d399; font-size:12px; margin:-10px 0 10px 0; padding-right:15px;'>🟢 פדיון מצטבר: ${cumulative_cash_returned:,.0f} ({return_pct:.0f}% מהקרן) 🚀 סיכון אפס!</p>", unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"<p style='color:#94a3b8; font-size:12px; margin:-10px 0 10px 0; padding-right:15px;'>⚪ פדיון מצטבר: ${cumulative_cash_returned:,.0f} ({return_pct:.0f}% מהקרן)</p>", unsafe_allow_html=True)
                 else:
                     st.markdown("<span style='color:#94a3b8; font-size:14px;'>אין מנות פעילות בתיק כרגע. ברגע שהשוק ירד ויבוצע איסוף, יעדי המכירה יופיעו כאן אוטומטית.</span>", unsafe_allow_html=True)
 
