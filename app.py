@@ -4,7 +4,7 @@ import yfinance as yf
 import pandas as pd
 import ta
 import math
-import xml.etree.TreeElement as ET
+import xml.etree.ElementTree as ET
 from urllib.parse import quote
 from streamlit_autorefresh import st_autorefresh
 
@@ -185,14 +185,12 @@ else:
                 if trigger_active:
                     any_active_trigger = True
                 
-                # ארכיטקטורת מצב נקייה - מבוססת מפתח ייחודי לכל נכס
                 is_manual_key = f"{lev}_is_manual"
                 val_key = f"{lev}_tranches_value"
                 
                 if is_manual_key not in st.session_state:
                     st.session_state[is_manual_key] = False
                 
-                # אם אנחנו בטייס אוטומטי, נסנכרן את ערך השדה ישירות מול השוק הנוכחי
                 if not st.session_state[is_manual_key]:
                     st.session_state[val_key] = int(auto_tranches)
                 
@@ -243,7 +241,6 @@ else:
             # --- חלק 2: ניהול פוזיציה ויעדי מכירה ---
             st.markdown("<h4 style='color:#34d399; margin:0 0 10px 0;'>💼 הפוזיציה הנוכחית ומפת שחרורים</h4>", unsafe_allow_html=True)
             
-            # שדה קלט המקושר ישירות לסטייט ולקולבק קדם-ריצה חסין נעילות
             st.number_input(
                 "מנות אקטיביות בתיק כרגע:", 
                 min_value=0, 
@@ -253,7 +250,6 @@ else:
                 args=(lev,)
             )
             
-            # כפתור חזרה לטייס אוטומטי המשתמש ב-on_click בטוח לחלוטין
             if st.session_state[asset["is_manual_key"]]:
                 st.markdown("<p style='color:#fbbf24; font-size:13px; margin:4px 0;'>⚠️ מצב עריכה ידנית פעיל (הסינכרון האוטומטי מושהה)</p>", unsafe_allow_html=True)
                 st.button(
@@ -265,7 +261,6 @@ else:
             
             current_active_tranches = st.session_state[asset["val_key"]]
             
-            # עדכון סורק תיק כולל
             total_portfolio_tranches += current_active_tranches
             total_portfolio_value += (current_active_tranches * tranche_size)
             
@@ -292,7 +287,6 @@ else:
                 st.markdown(f'<span style="color: #a3a3a3; font-size: 13px; display:block; margin-top:10px;">📐 מחיר ממוצע משוקלל של הגריד: <b>${auto_calculated_avg:.2f}</b></span>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
                 
-                # הגדרת אסטרטגיית שחרורים לפי כמות מנות
                 if current_active_tranches == 1: steps, label = [11, 22, 33], "שלישים"
                 elif current_active_tranches == 2: steps, label = [10, 20, 30, 40], "רבעים"
                 elif current_active_tranches == 3: steps, label = [10, 20, 30, 40, 50, 60], "שישיות"
