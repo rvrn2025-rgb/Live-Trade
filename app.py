@@ -4,13 +4,11 @@ import pandas as pd
 import math
 from streamlit_autorefresh import st_autorefresh
 
-# 1. הגדרת תצורת דף ומערכת לביצועים מקסימליים
+# 1. הגדרת תצורת דף ומערכת
 st.set_page_config(page_title="DCA Matrix Terminal", layout="wide", initial_sidebar_state="collapsed")
-
-# רענון אוטומטי מובנה כל 30 שניות לסנכרון שערים חי
 st_autorefresh(interval=30000, key="matrix_live_refresh")
 
-# 2. ארכיטקטורת עיצוב הייטקיסטית (Mobile-First, ללא Sidebar, תמיכת RTL מלאה)
+# 2. ארכיטקטורת עיצוב הייטקיסטית
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
 
@@ -21,92 +19,22 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], .main,
     overflow-x: hidden !important; 
     max-width: 100vw !important;
 }
-
-[data-testid="stAppViewContainer"] {
-    direction: RTL !important;
-    text-align: right !important;
-}
-
+[data-testid="stAppViewContainer"] { direction: RTL !important; text-align: right !important; }
 h1, h2, h3, h4, h5 { color: #f9fafb !important; font-weight: 800 !important; }
+.stMarkdown p, label { font-size: 16px !important; font-weight: 600 !important; color: #9ca3af !important; text-align: right !important; }
 
-.stMarkdown p, label { 
-    font-size: 16px !important; 
-    font-weight: 600 !important; 
-    color: #9ca3af !important; 
-    text-align: right !important;
-}
-
-.global-summary-box {
-    background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);
-    border: 1px solid #312e81;
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 25px;
-    text-align: center;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.action-box {
-    background: #111827;
-    border-radius: 8px;
-    padding: 16px;
-    margin-bottom: 20px;
-    text-align: center;
-}
+.global-summary-box { background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%); border: 1px solid #312e81; border-radius: 12px; padding: 20px; margin-bottom: 25px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+.action-box { background: #111827; border-radius: 8px; padding: 16px; margin-bottom: 20px; text-align: center; }
 .action-alert { border: 2px solid #ef4444; background-color: #450a0a; }
-
-.streamlit-expanderHeader {
-    background-color: #1f2937 !important;
-    border: 1px solid #374151 !important;
-    border-radius: 8px !important;
-    padding: 14px !important;
-    font-size: 16px !important;
-    color: #38bdf8 !important;
-}
-
-div[data-testid="stNumberInput"] input {
-    text-align: right !important;
-    background-color: #111827 !important;
-    color: #ffffff !important;
-    border: 1px solid #4b5563 !important;
-}
-
-.cyber-info-box {
-    background: linear-gradient(135deg, #111827 0%, #0f172a 100%);
-    border: 1px solid #1e293b;
-    border-right: 4px solid #38bdf8;
-    border-radius: 6px;
-    padding: 14px;
-    margin: 15px 0;
-}
-.cyber-row {
-    font-family: 'JetBrains Mono', monospace, sans-serif;
-    font-size: 14px;
-    color: #e5e7eb;
-    padding: 6px 0;
-    border-bottom: 1px dashed #1e293b;
-    display: flex;
-    justify-content: space-between;
-}
-
-.step-card {
-    background-color: #111827;
-    border-right: 4px solid #3b82f6;
-    padding: 12px 16px;
-    margin: 10px 0;
-    border-radius: 0 6px 6px 0;
-    border: 1px solid #1f2937;
-}
-.step-card-free {
-    border-right-color: #10b981 !important;
-    background-color: #064e3b !important;
-    border-top: 1px solid #047857 !important;
-    border-bottom: 1px solid #047857 !important;
-    border-left: 1px solid #047857 !important;
-}
+.streamlit-expanderHeader { background-color: #1f2937 !important; border: 1px solid #374151 !important; border-radius: 8px !important; padding: 14px !important; font-size: 16px !important; color: #38bdf8 !important; }
+div[data-testid="stNumberInput"] input { text-align: right !important; background-color: #111827 !important; color: #ffffff !important; border: 1px solid #4b5563 !important; }
+.cyber-info-box { background: linear-gradient(135deg, #111827 0%, #0f172a 100%); border: 1px solid #1e293b; border-right: 4px solid #38bdf8; border-radius: 6px; padding: 14px; margin: 15px 0; }
+.cyber-row { font-family: 'JetBrains Mono', monospace, sans-serif; font-size: 14px; color: #e5e7eb; padding: 6px 0; border-bottom: 1px dashed #1e293b; display: flex; justify-content: space-between; }
+.step-card { background-color: #111827; border-right: 4px solid #3b82f6; padding: 12px 16px; margin: 10px 0; border-radius: 0 6px 6px 0; border: 1px solid #1f2937; }
+.step-card-free { border-right-color: #10b981 !important; background-color: #064e3b !important; border-top: 1px solid #047857 !important; border-bottom: 1px solid #047857 !important; border-left: 1px solid #047857 !important; }
 </style>""", unsafe_allow_html=True)
 
-# 3. פונקציות קדם-ריצה (Callbacks) לניהול מצב ידני חסין לופים
+# 3. פונקציות Callback
 def cb_set_manual(lev_symbol):
     st.session_state[f"{lev_symbol}_is_manual"] = True
 
@@ -114,13 +42,14 @@ def cb_reset_autopilot(lev_symbol, auto_val):
     st.session_state[f"{lev_symbol}_is_manual"] = False
     st.session_state[f"{lev_symbol}_tranches_value"] = int(auto_val)
 
-# 4. הגדרת נכסים קבועים למטריצה כולל הנכסים החדשים והסינתטיים
+# 4. הגדרת נכסים קבועים למטריצה (כולל התעודות האמיתיות של תל אביב)
 asset_pairs = [
     {"base": "QQQ", "leveraged": "TQQQ", "name": "📈 נאסד\"ק (TQQQ)"},
     {"base": "SOXX", "leveraged": "SOXL", "name": "💻 שבבים (SOXL)"},
     {"base": "SPY", "leveraged": "UPRO", "name": "🇺🇸 S&P 500 (UPRO)"},
     {"base": "XLF", "leveraged": "FAS", "name": "💰 פיננסים (FAS)"},
-    {"base": "^TA35", "leveraged": "TA35-SYNTH", "name": "🇮🇱 ת\"א 35 (3x סינתטי)"},
+    {"base": "^TA35", "leveraged": "1146380.TA", "name": "🇮🇱 ת\"א 35 (קסם פי 3)"},
+    {"base": "TA-BANKS5.TA", "leveraged": "5139860.TA", "name": "🏦 בנקים 5 (מיטב פי 3)"},
     {"base": "SPMO", "leveraged": "SPMO-SYNTH", "name": "🚀 מומנטום SPMO (3x סינתטי)"}
 ]
 
@@ -128,7 +57,7 @@ asset_pairs = [
 st.markdown("### 🛠️ הגדרות אסטרטגיית גריד")
 col_p1, col_p2, col_p3 = st.columns([2, 2, 2])
 with col_p1:
-    tranche_size = st.number_input("💰 תקציב קבוע למנה ($):", min_value=100, max_value=100000, value=3000, step=500)
+    tranche_size = st.number_input("💰 תקציב קבוע למנה (דולר/שקל):", min_value=100, max_value=100000, value=3000, step=500)
 with col_p2:
     interval_choice = st.selectbox("📐 מרווח ירידה בין מנות (נכס בסיס):", ["3.5%", "5.0%", "7.0%", "10.0%", "הזן ידנית..."], index=1)
 with col_p3:
@@ -137,7 +66,7 @@ with col_p3:
     else:
         drop_interval = float(interval_choice.replace("%", ""))
 
-# 6. מנגנון משיכת נתונים אמין מ-Yahoo Finance
+# 6. מנגנון משיכת נתונים 
 @st.cache_data(ttl=86400)
 def get_historical_ath(symbol):
     try:
@@ -169,8 +98,8 @@ def get_live_market_data(tickers_list):
     except:
         return {}
 
-# רשימת טיקרים למשיכה מהבורסה (רק נכסים אמיתיים שקיימים ביאהו)
-all_tickers = ["QQQ", "TQQQ", "SOXX", "SOXL", "SPY", "UPRO", "XLF", "FAS", "^TA35", "SPMO"]
+# יצירת רשימת טיקרים דינמית כדי למנוע כפילויות ולכלול את כולם
+all_tickers = list(set([p["base"] for p in asset_pairs] + [p["leveraged"] for p in asset_pairs if not p["leveraged"].endswith("-SYNTH")]))
 live_quotes = get_live_market_data(all_tickers)
 
 processed_assets = []
@@ -184,21 +113,21 @@ else:
     for pair in asset_pairs:
         base = pair["base"]
         lev = pair["leveraged"]
+        name = pair["name"]
         
         base_data = live_quotes.get(base, {"price": 0.0, "pct_change": 0.0})
         is_synthetic = lev.endswith("-SYNTH")
+        currency = "₪" if lev.endswith(".TA") else "$"
         
-        # חישוב שערים ומקסימום לפי סוג הנכס (אמיתי או סינתטי)
         if is_synthetic:
             base_curr = base_data["price"]
-            lev_change = base_data["pct_change"] * 3 # תנועה יומית מוכפלת פי 3
+            lev_change = base_data["pct_change"] * 3
             
             if base_curr > 0:
                 base_max_hist = get_historical_ath(base)
                 base_max = max(base_max_hist, base_curr)
                 base_drop = ((base_curr - base_max) / base_max) * 100
-                
-                lev_max = 100.0 # ערך ייחוס נומינלי קבוע בשיא לתצוגה נוחה במובייל
+                lev_max = 100.0
                 lev_curr = max(0.01, lev_max * (1 - (abs(base_drop) * 3 / 100)))
         else:
             lev_data = live_quotes.get(lev, {"price": 0.0, "pct_change": 0.0})
@@ -209,11 +138,17 @@ else:
             if base_curr > 0 and lev_curr > 0:
                 base_max_hist = get_historical_ath(base)
                 lev_max_hist = get_historical_ath(lev)
+                
+                # מנגנון תרגום אגורות לשקלים לתעודות סל ישראליות (במידה והמחיר מצוטט מעל 100 אגורות)
+                if lev.endswith(".TA") and lev_curr > 100:
+                    lev_curr = lev_curr / 100.0
+                    lev_max_hist = lev_max_hist / 100.0
+                
                 base_max = max(base_max_hist, base_curr)
                 lev_max = max(lev_max_hist, lev_curr)
                 base_drop = ((base_curr - base_max) / base_max) * 100
         
-        # הרצת הלוגיקה המתמטית המשותפת במידה והנתונים תקינים
+        # הרצת הלוגיקה אם הנתונים תקינים
         if base_curr > 0 and lev_curr > 0:
             abs_drop = abs(base_drop)
             auto_tranches = math.floor(abs_drop / drop_interval)
@@ -248,7 +183,7 @@ else:
                 "next_base_price": next_base_price, "next_lev_price": next_lev_price, "next_base_drop_target": next_base_drop_target,
                 "distance_to_next": distance_to_next, "trigger_active": trigger_active,
                 "is_manual_key": is_manual_key, "val_key": val_key, "current_tranches": current_tranches,
-                "is_synthetic": is_synthetic
+                "is_synthetic": is_synthetic, "currency": currency
             })
 
     # --- תצוגת הרכיבים על המסך ---
@@ -256,7 +191,7 @@ else:
         <h4 style="margin:0 0 10px 0; color:#818cf8;">📊 סיכום הון במטריצה הגלובלית</h4>
         <div style="display:flex; justify-content:space-around; flex-wrap:wrap; gap:10px;">
             <div><span style="color:#9ca3af; font-size:14px;">מנות אקטיביות בתיק:</span><br><b style="font-size:22px; color:#ffffff;">{total_portfolio_tranches}</b></div>
-            <div><span style="color:#9ca3af; font-size:14px;">הון מנוצל כולל:</span><br><b style="font-size:22px; color:#34d399;">${total_portfolio_value:,}</b></div>
+            <div><span style="color:#9ca3af; font-size:14px;">הון מנוצל כולל (יחידות מטבע):</span><br><b style="font-size:22px; color:#34d399;">{total_portfolio_value:,}</b></div>
         </div>
     </div>""", unsafe_allow_html=True)
 
@@ -270,12 +205,12 @@ else:
         lev = asset["pair"]["leveraged"]
         base = asset["pair"]["base"]
         name = asset["pair"]["name"]
+        currency = asset["currency"]
         
         sign = "+" if asset["lev_change"] > 0 else ""
         status_label = "🔴 טריגר רכישה!" if asset["trigger_active"] else "⏳ בהמתנה"
         
-        # תיוג מחיר שונה לנכס סינתטי כדי לשמור על שקיפות הנדסית
-        price_display = f"${asset['lev_curr']:.2f} (סינתטי)" if asset["is_synthetic"] else f"${asset['lev_curr']:.2f}"
+        price_display = f"{currency}{asset['lev_curr']:.2f} (סינתטי)" if asset["is_synthetic"] else f"{currency}{asset['lev_curr']:.2f}"
         title_text = f"{name} | {price_display} ({sign}{asset['lev_change']:.2f}%) | {status_label}"
         
         with st.expander(title_text, expanded=asset["trigger_active"]):
@@ -289,9 +224,9 @@ else:
             shares_to_buy = round(tranche_size / asset['lev_curr'])
             
             if asset["trigger_active"]:
-                st.error(f"💥 **פקודת ביצוע מיידית:** רכוש כעת בשווי של **{tranche_size}$** מתוך הנכס הממונף (כערך של כ-{shares_to_buy} יחידות).")
+                st.error(f"💥 **פקודת ביצוע מיידית:** רכוש כעת כ-**{shares_to_buy} יחידות** של {name} בשווי {tranche_size}{currency}")
             else:
-                st.markdown(f"• **פקודה עתידית מתוכננת (מנה {asset['next_tranche_num']}):** קנייה במידה ו-{base} מגיע ל-**`${asset['next_base_price']:.2f}`** (שער יעד משוער לממונף: `${asset['next_lev_price']:.2f}`).")
+                st.markdown(f"• **פקודה עתידית מתוכננת (מנה {asset['next_tranche_num']}):** קנייה במידה והבסיס יגיע ל-**`{currency}{asset['next_base_price']:.2f}`** (שער יעד משוער לממונף: `{currency}{asset['next_lev_price']:.2f}`).")
             
             st.markdown("<hr style='margin:15px 0; border-color:#374151;'>", unsafe_allow_html=True)
             
@@ -299,8 +234,7 @@ else:
             
             st.number_input(
                 "מנות אקטיביות בתיק כרגע:", 
-                min_value=0, 
-                max_value=20, 
+                min_value=0, max_value=20, 
                 key=asset["val_key"],
                 on_change=cb_set_manual,
                 args=(lev,)
@@ -331,12 +265,12 @@ else:
                     theoretical_prices.append(t_lev_price)
                     
                     st.markdown(f"""<div class="cyber-row">
-                        <span>🔹 מנה {i} (ירידה בבסיס: {base_tranche_drop}%)</span>
-                        <span>שער בסיס: <b>${t_base_price:.2f}</b> | שער ממונף: <b>${t_lev_price:.2f}</b></span>
+                        <span>🔹 מנה {i} (ירידה: {base_tranche_drop}%)</span>
+                        <span>בסיס: <b>{currency}{t_base_price:.2f}</b> | ממונף: <b>{currency}{t_lev_price:.2f}</b></span>
                     </div>""", unsafe_allow_html=True)
                 
                 auto_calculated_avg = sum(theoretical_prices) / len(theoretical_prices)
-                st.markdown(f'<span style="color: #a3a3a3; font-size: 13px; display:block; margin-top:10px;">📐 מחיר ממוצע משוקלל של הגריד: <b>${auto_calculated_avg:.2f}</b></span>', unsafe_allow_html=True)
+                st.markdown(f'<span style="color: #a3a3a3; font-size: 13px; display:block; margin-top:10px;">📐 מחיר ממוצע משוקלל של הגריד: <b>{currency}{auto_calculated_avg:.2f}</b></span>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
                 
                 if current_active_tranches == 1: steps, label = [11, 22, 33], "שלישים"
@@ -361,13 +295,13 @@ else:
                     
                     if return_pct >= 100:
                         st.markdown(f"""<div class="step-card step-card-free">
-                            <b>📍 יעד {i+1} (+{step}%):</b> מכור <b>{shares_per_step} מניות</b> בשער <b>${target_price:.2f}</b><br>
-                            <span style='font-size:12px; color:#34d399; font-weight:700;'>🟢 פדיון מצטבר: ${cumulative_cash_returned:,.0f} ({return_pct:.0f}% מהקרן) 🚀 סיכון אפס! הקרן כוסתה במלואה.</span>
+                            <b>📍 יעד {i+1} (+{step}%):</b> מכור <b>{shares_per_step} מניות</b> בשער <b>{currency}{target_price:.2f}</b><br>
+                            <span style='font-size:12px; color:#34d399; font-weight:700;'>🟢 פדיון מצטבר: {currency}{cumulative_cash_returned:,.0f} ({return_pct:.0f}% מהקרן) 🚀 סיכון אפס!</span>
                         </div>""", unsafe_allow_html=True)
                     else:
                         st.markdown(f"""<div class="step-card">
-                            <b>📍 יעד {i+1} (+{step}%):</b> מכור <b>{shares_per_step} מניות</b> בשער <b>${target_price:.2f}</b><br>
-                            <span style='font-size:12px; color:#9ca3af;'>💰 פדיון מצטבר: ${cumulative_cash_returned:,.0f} ({return_pct:.0f}% מהקרן)</span>
+                            <b>📍 יעד {i+1} (+{step}%):</b> מכור <b>{shares_per_step} מניות</b> בשער <b>{currency}{target_price:.2f}</b><br>
+                            <span style='font-size:12px; color:#9ca3af;'>💰 פדיון מצטבר: {currency}{cumulative_cash_returned:,.0f} ({return_pct:.0f}% מהקרן)</span>
                         </div>""", unsafe_allow_html=True)
             else:
-                st.markdown("<span style='color:#9ca3af; font-size:14px;'>אין מנות פעילות בתיק כרגע. ברגע שהשוק ירד ויבוצע איסוף, יעדי המכירה והכניסות יופיעו כאן.</span>", unsafe_allow_html=True)
+                st.markdown("<span style='color:#9ca3af; font-size:14px;'>אין מנות פעילות בתיק כרגע. ברגע שהשוק ירד, יעדי המכירה והכניסות יופיעו כאן.</span>", unsafe_allow_html=True)
