@@ -1,17 +1,14 @@
 import streamlit as st
-import requests
 import yfinance as yf
 import pandas as pd
 import math
-import xml.etree.ElementTree as ET
-from urllib.parse import quote
 from streamlit_autorefresh import st_autorefresh
 
 # 1. הגדרת תצורת דף ומערכת לביצועים מקסימליים
 st.set_page_config(page_title="DCA Matrix Terminal", layout="wide", initial_sidebar_state="collapsed")
 
-# רענון אוטומטי מובנה כל 65 שניות לסנכרון מול הבורסה
-st_autorefresh(interval=65000, key="matrix_live_refresh")
+# רענון אוטומטי מובנה כל 30 שניות לסנכרון שערים חי
+st_autorefresh(interval=30000, key="matrix_live_refresh")
 
 # 2. ארכיטקטורת עיצוב הייטקיסטית (Mobile-First, ללא Sidebar, תמיכת RTL מלאה)
 st.markdown("""<style>
@@ -25,7 +22,6 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], .main,
     max-width: 100vw !important;
 }
 
-/* הגדרת כיווניות ימין לשמאל גלובלית */
 [data-testid="stAppViewContainer"] {
     direction: RTL !important;
     text-align: right !important;
@@ -40,7 +36,6 @@ h1, h2, h3, h4, h5 { color: #f9fafb !important; font-weight: 800 !important; }
     text-align: right !important;
 }
 
-/* לוח סיכום הון עליון - מחליף את ה-Sidebar הבעייתי */
 .global-summary-box {
     background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);
     border: 1px solid #312e81;
@@ -76,7 +71,6 @@ div[data-testid="stNumberInput"] input {
     border: 1px solid #4b5563 !important;
 }
 
-/* תיבת המידע ההנדסית של המנות */
 .cyber-info-box {
     background: linear-gradient(135deg, #111827 0%, #0f172a 100%);
     border: 1px solid #1e293b;
@@ -95,7 +89,6 @@ div[data-testid="stNumberInput"] input {
     justify-content: space-between;
 }
 
-/* כרטיסי יעדי המכירה */
 .step-card {
     background-color: #111827;
     border-right: 4px solid #3b82f6;
@@ -142,90 +135,111 @@ with col_p3:
     else:
         drop_interval = float(interval_choice.replace("%", ""))
 
-# 6. פונקציות תשתית למשיכת נתוני שוק ומאקרו
-@st.cache_data(ttl=60)
-def get_realtime_quotes(symbols_string, api_key):
-    url = f"https://api.twelvedata.com/quote?symbol={symbols_string}&apikey={api_key}"
-    try: return requests.get(url).json()
-    except: return {}
+# 6. מנגנון משיכת נתונים אמין ומהיר מ-Yahoo Finance
+@st.cache_data(ttl=86400) # שמירת שיא כל הזמנים ל-24 שעות (מונע הורדות כבדות)
+def get_historical_ath(symbol):
+    try:
+        df = yf.Ticker(symbol).history(period="max", auto_adjust=False)
+        return float(df['High'].max())
+    except:
+        return 0.0
 
-@st.cache_data(ttl=900)
-def get_historical_data(symbol):
-    return yf.Ticker(symbol).history(period="max", auto_adjust=False)
+@st.cache_data(ttl=30) # שמירת מחירים חיים ל-30 שניות בלבד (בזמן אמת ומדויק)
+def get_live_market_data(tickers_list):
+    try:
+        # הורדת 2 ימי מסחר בלבד כדי לקבל שער נוכחי ואחוז שינוי יומי בצורה סופר מהירה
+        df = yf.download(tickers_list, period="2d", progress=False)
+        results = {}
+        for t in tickers_list:
+            close_series = df['Close'][t].dropna()
+            if len(close_series) >= 1:
+                live_price = float(close_series.iloc[-1])
+                if len(close_series) >= 2:
+                    prev_close = float(close_series.iloc[-2])
+                    pct_change = ((live_price - prev_close) / prev_close) * 100
+                else:
+                    open_series = df['Open'][t].dropna()
+                    live_open = float(open_series.iloc[-1]) if len(open_series) > 0 else live_price
+                    pct_change = ((live_price - live_open) / live_open) * 100
+                results[t] = {"price": live_price, "pct_change": pct_change}
+            else:
+                results[t] = {"price": 0.0, "pct_change": 0.0}
+        return results
+    except:
+        return {}
 
-API_KEY = "1541f1cd2a48488f83cfc193a9ada724"
+# משיכת הנתונים בזמן אמת מהבורסה
 all_tickers = ["QQQ", "TQQQ", "SOXX", "SOXL", "SPY", "UPRO", "XLF", "FAS"]
-quote_response = get_realtime_quotes(",".join(all_tickers), API_KEY)
+live_quotes = get_live_market_data(all_tickers)
 
 processed_assets = []
 any_active_trigger = False
 total_portfolio_tranches = 0
 total_portfolio_value = 0
 
-# --- שלב א': עיבוד נתונים מקדים וחישוב הון כולל (לפני הציור על המסך) ---
-if "status" in quote_response and quote_response["status"] == "error":
-    st.error("❌ שגיאה זמנית במשיכת נתוני השוק. המערכת תתרענן אוטומטית בעוד דקה.")
+# עיבוד מקדים
+if not live_quotes:
+    st.error("⚠️ שגיאה זמנית בהתחברות לשרתי הבורסה של Yahoo Finance. המערכת תנסה שוב בעוד מספר שניות.")
 else:
     for pair in asset_pairs:
         base = pair["base"]
         lev = pair["leveraged"]
         
-        base_quote = quote_response.get(base, {})
-        lev_quote = quote_response.get(lev, {})
+        base_data = live_quotes.get(base, {"price": 0.0, "pct_change": 0.0})
+        lev_data = live_quotes.get(lev, {"price": 0.0, "pct_change": 0.0})
         
-        if "close" in base_quote or "price" in base_quote:
-            base_curr = float(base_quote.get("price", base_quote.get("close", 0)))
-            lev_curr = float(lev_quote.get("price", lev_quote.get("close", 0)))
-            lev_change = float(lev_quote.get("percent_change", 0))
+        base_curr = base_data["price"]
+        lev_curr = lev_data["price"]
+        lev_change = lev_data["pct_change"]
+        
+        if base_curr > 0 and lev_curr > 0:
+            base_max_hist = get_historical_ath(base)
+            lev_max_hist = get_historical_ath(lev)
             
-            df_base = get_historical_data(base).copy()
-            df_lev = get_historical_data(lev).copy()
+            # הגנה למקרה שהשוק בשיא חדש ממש עכשיו
+            base_max = max(base_max_hist, base_curr)
+            lev_max = max(lev_max_hist, lev_curr)
             
-            if len(df_base) > 200 and len(df_lev) > 14:
-                df_base.loc[df_base.index[-1], 'Close'] = base_curr
-                base_max = df_base['High'].max()
-                lev_max = df_lev['High'].max()
-                
-                base_drop = ((base_curr - base_max) / base_max) * 100
-                abs_drop = abs(base_drop)
-                
-                auto_tranches = math.floor(abs_drop / drop_interval)
-                next_tranche_num = auto_tranches + 1
-                next_base_drop_target = next_tranche_num * drop_interval
-                next_base_price = base_max * (1 - (next_base_drop_target / 100))
-                next_lev_price = lev_max * (1 - ((next_base_drop_target * 3) / 100))
-                
-                distance_to_next = next_base_drop_target - abs_drop
-                trigger_active = distance_to_next <= 0.5
-                
-                if trigger_active:
-                    any_active_trigger = True
-                
-                is_manual_key = f"{lev}_is_manual"
-                val_key = f"{lev}_tranches_value"
-                
-                if is_manual_key not in st.session_state:
-                    st.session_state[is_manual_key] = False
-                
-                if not st.session_state[is_manual_key]:
-                    st.session_state[val_key] = int(auto_tranches)
-                
-                current_tranches = st.session_state[val_key]
-                total_portfolio_tranches += current_tranches
-                total_portfolio_value += (current_tranches * tranche_size)
-                
-                processed_assets.append({
-                    "pair": pair, "base_curr": base_curr, "lev_curr": lev_curr, "lev_change": lev_change,
-                    "base_max": base_max, "lev_max": lev_max, "base_drop": base_drop,
-                    "auto_tranches": auto_tranches, "next_tranche_num": next_tranche_num,
-                    "next_base_price": next_base_price, "next_lev_price": next_lev_price, "next_base_drop_target": next_base_drop_target,
-                    "distance_to_next": distance_to_next, "trigger_active": trigger_active,
-                    "is_manual_key": is_manual_key, "val_key": val_key, "current_tranches": current_tranches
-                })
+            base_drop = ((base_curr - base_max) / base_max) * 100
+            abs_drop = abs(base_drop)
+            
+            auto_tranches = math.floor(abs_drop / drop_interval)
+            next_tranche_num = auto_tranches + 1
+            next_base_drop_target = next_tranche_num * drop_interval
+            next_base_price = base_max * (1 - (next_base_drop_target / 100))
+            next_lev_price = lev_max * (1 - ((next_base_drop_target * 3) / 100))
+            
+            distance_to_next = next_base_drop_target - abs_drop
+            trigger_active = distance_to_next <= 0.5
+            
+            if trigger_active:
+                any_active_trigger = True
+            
+            is_manual_key = f"{lev}_is_manual"
+            val_key = f"{lev}_tranches_value"
+            
+            if is_manual_key not in st.session_state:
+                st.session_state[is_manual_key] = False
+            
+            if not st.session_state[is_manual_key]:
+                st.session_state[val_key] = int(auto_tranches)
+            
+            current_tranches = st.session_state[val_key]
+            total_portfolio_tranches += current_tranches
+            total_portfolio_value += (current_tranches * tranche_size)
+            
+            processed_assets.append({
+                "pair": pair, "base_curr": base_curr, "lev_curr": lev_curr, "lev_change": lev_change,
+                "base_max": base_max, "lev_max": lev_max, "base_drop": base_drop,
+                "auto_tranches": auto_tranches, "next_tranche_num": next_tranche_num,
+                "next_base_price": next_base_price, "next_lev_price": next_lev_price, "next_base_drop_target": next_base_drop_target,
+                "distance_to_next": distance_to_next, "trigger_active": trigger_active,
+                "is_manual_key": is_manual_key, "val_key": val_key, "current_tranches": current_tranches
+            })
 
-    # --- שלב ב': תצוגת רכיבים על המסך (Layout) ---
+    # --- תצוגת הרכיבים על המסך ---
     
-    # 7. לוח בקרה עליון הנדסי (במקום ה-Sidebar שנמחק)
+    # לוח בקרה עליון יציב למובייל
     st.markdown(f"""<div class="global-summary-box">
         <h4 style="margin:0 0 10px 0; color:#818cf8;">📊 סיכום הון במטריצה הגלובלית</h4>
         <div style="display:flex; justify-content:space-around; flex-wrap:wrap; gap:10px;">
@@ -234,14 +248,13 @@ else:
         </div>
     </div>""", unsafe_allow_html=True)
 
-    # התראה עליונה במידה ויש קנייה דחופה
     if any_active_trigger:
         st.markdown("""<div class="action-box action-alert">
             <h3 style="margin:0; color:#ffffff;">🚨 טריגר ביצוע אקטיבי!</h3>
             <p style="margin:5px 0 0 0; color:#fca5a5; font-size:15px;">אחד מהנכסים הגיע למדרגת הקנייה שלו. הוראות הביצוע בפנים מסומנות באדום.</p>
         </div>""", unsafe_allow_html=True)
 
-    # 8. תצוגת כרטיסי הנכסים האנכית
+    # כרטיסי הנכסים האנכית
     for asset in processed_assets:
         lev = asset["pair"]["leveraged"]
         base = asset["pair"]["base"]
@@ -253,7 +266,6 @@ else:
         
         with st.expander(title_text, expanded=asset["trigger_active"]):
             
-            # --- חלק 1: יעדי כניסה ונתוני שוק ---
             st.markdown("<h4 style='color:#38bdf8; margin:0 0 10px 0;'>🎯 סטטוס ויעדי קנייה</h4>", unsafe_allow_html=True)
             st.markdown(f"• מרחק נוכחי משיא כל הזמנים: **`{asset['base_drop']:.1f}%`**")
             
@@ -269,10 +281,8 @@ else:
             
             st.markdown("<hr style='margin:15px 0; border-color:#374151;'>", unsafe_allow_html=True)
             
-            # --- חלק 2: ניהול פוזיציה ויעדי מכירה ---
             st.markdown("<h4 style='color:#34d399; margin:0 0 10px 0;'>💼 הפוזיציה הנוכחית ומפת שחרורים</h4>", unsafe_allow_html=True)
             
-            # שדה קלט המקושר ישירות לסטייט ולקולבק קדם-ריצה חסין נעילות ושגיאות
             st.number_input(
                 "מנות אקטיביות בתיק כרגע:", 
                 min_value=0, 
@@ -282,7 +292,6 @@ else:
                 args=(lev,)
             )
             
-            # כפתור חזרה לטייס אוטומטי המשתמש ב-on_click בטוח לחלוטין וללא שגיאות זיכרון
             if st.session_state[asset["is_manual_key"]]:
                 st.markdown("<p style='color:#fbbf24; font-size:13px; margin:4px 0;'>⚠️ מצב עריכה ידנית פעיל (הסינכרון האוטומטי מושהה)</p>", unsafe_allow_html=True)
                 st.button(
@@ -295,7 +304,6 @@ else:
             current_active_tranches = st.session_state[asset["val_key"]]
             
             if current_active_tranches > 0:
-                # --- תיבת מידע אינפורמטיבית והייטקיסטית (Cyber-Grid Box) ---
                 st.markdown('<div class="cyber-info-box">', unsafe_allow_html=True)
                 st.markdown('<span style="color: #38bdf8; font-weight: bold; font-size: 14px; display:block; margin-bottom:8px;">📊 פירוט שערים הנדסיים של המנות שנרכשו:</span>', unsafe_allow_html=True)
                 
@@ -317,7 +325,6 @@ else:
                 st.markdown(f'<span style="color: #a3a3a3; font-size: 13px; display:block; margin-top:10px;">📐 מחיר ממוצע משוקלל של הגריד: <b>${auto_calculated_avg:.2f}</b></span>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
                 
-                # הגדרת אסטרטגיית שחרורים אוטומטית לפי כמות המנות בפוזיציה
                 if current_active_tranches == 1: steps, label = [11, 22, 33], "שלישים"
                 elif current_active_tranches == 2: steps, label = [10, 20, 30, 40], "רבעים"
                 elif current_active_tranches == 3: steps, label = [10, 20, 30, 40, 50, 60], "שישיות"
