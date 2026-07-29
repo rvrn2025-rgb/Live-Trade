@@ -114,14 +114,14 @@ def cb_reset_autopilot(lev_symbol, auto_val):
     st.session_state[f"{lev_symbol}_is_manual"] = False
     st.session_state[f"{lev_symbol}_tranches_value"] = int(auto_val)
 
-# 4. הגדרת נכסים קבועים למטריצה (מנוע סינתטי יציב לחלוטין עבור מדדים מורכבים)
+# 4. הגדרת נכסים קבועים למטריצה (כולל פתרון הנייר הרשמי 1147578.TA למדד הבנקים)
 asset_pairs = [
     {"base": "QQQ", "leveraged": "TQQQ", "name": "📈 נאסד\"ק (TQQQ)"},
     {"base": "SOXX", "leveraged": "SOXL", "name": "💻 שבבים (SOXL)"},
     {"base": "SPY", "leveraged": "UPRO", "name": "🇺🇸 S&P 500 (UPRO)"},
     {"base": "XLF", "leveraged": "FAS", "name": "💰 פיננסים (FAS)"},
     {"base": "TA35.TA", "leveraged": "TA35-SYNTH", "name": "🇮🇱 ת\"א 35 (3x סינתטי)"},
-    {"base": "^TELBANK5", "leveraged": "BANKS-SYNTH", "name": "🏦 מדד הבנקים 5 (3x סינתטי)"},
+    {"base": "1147578.TA", "leveraged": "BANKS-SYNTH", "name": "🏦 מדד הבנקים 5 (3x סינתטי)"},
     {"base": "SPMO", "leveraged": "SPMO-SYNTH", "name": "🚀 מומנטום SPMO (3x סינתטי)"}
 ]
 
@@ -138,11 +138,10 @@ with col_p3:
     else:
         drop_interval = float(interval_choice.replace("%", ""))
 
-# הגנה גלובלית מפני מרווח אפס שעלול להקריס את הגריד
 if drop_interval <= 0:
     drop_interval = 0.1
 
-# 6. מנגנון משיכת נתונים מהיר מ-Yahoo Finance עם הגנות קריסה
+# 6. מנגנון משיכת נתונים מהיר מ-Yahoo Finance עם הגנות קריסה ושכבת שריון מתמטית
 @st.cache_data(ttl=86400)
 def get_historical_ath(symbol):
     try:
@@ -169,7 +168,6 @@ def get_live_market_data(tickers_list):
                     live_price = float(close_series.iloc[-1])
                     if len(close_series) >= 2:
                         prev_close = float(close_series.iloc[-2])
-                        # מניעת חילוק באפס בחישוב אחוז השינוי היומי
                         pct_change = ((live_price - prev_close) / prev_close) * 100 if prev_close > 0 else 0.0
                     else:
                         pct_change = 0.0
@@ -182,7 +180,6 @@ def get_live_market_data(tickers_list):
     except:
         return {}
 
-# משיכת נתוני המדדים והמניות האמתיות בלבד
 all_tickers = list(set([p["base"] for p in asset_pairs] + [p["leveraged"] for p in asset_pairs if not p["leveraged"].endswith("-SYNTH")]))
 live_quotes = get_live_market_data(all_tickers)
 
@@ -191,7 +188,7 @@ any_active_trigger = False
 total_portfolio_tranches = 0
 total_portfolio_value = 0
 
-# 7. עיבוד ואינטגרציה של הנתונים עם שכבת שריון מפני חילוק באפס
+# 7. עיבוד ואינטגרציה של הנתונים
 for pair in asset_pairs:
     base = pair["base"]
     lev = pair["leveraged"]
@@ -207,7 +204,6 @@ for pair in asset_pairs:
     override_key = f"{base}_manual_price_input"
     ath_key = f"{base}_manual_ath_input"
     
-    # שלב בדיקת כיול ידני מהמשתמש למקרה שיאהו נכשל
     if base_curr == 0 and override_key in st.session_state:
         base_curr = st.session_state[override_key]
         
@@ -215,11 +211,8 @@ for pair in asset_pairs:
     if base_max_hist == 0 and ath_key in st.session_state:
         base_max_hist = st.session_state[ath_key]
         
-    # אם יש לנו מחיר תקין - מחשבים מטריצה
     if base_curr > 0:
         base_max = max(base_max_hist if base_max_hist > 0 else base_curr, base_curr)
-        
-        # הגנה מפני חילוק באפס בחישוב הירידה מהשיא
         base_drop = ((base_curr - base_max) / base_max) * 100 if base_max > 0 else 0.0
         abs_drop = abs(base_drop)
         
@@ -244,7 +237,6 @@ for pair in asset_pairs:
         trigger_active = distance_to_next <= 0.5
         needs_calibration = False
     else:
-        # מצב נכס בהמתנה לכיול ידני
         base_drop = 0.0
         lev_curr = 0.0
         lev_change = 0.0
@@ -286,19 +278,18 @@ for pair in asset_pairs:
         "override_key": override_key, "ath_key": ath_key, "base_max_hist": base_max_hist
     })
 
-# --- תצוגת הרכיבים על המסך ---
+# --- תצוגה ---
 st.markdown(f"""<div class="global-summary-box">
     <h4 style="margin:0 0 10px 0; color:#818cf8;">📊 סיכום הון במטריצה הגלובלית</h4>
     <div style="display:flex; justify-content:space-around; flex-wrap:wrap; gap:10px;">
         <div><span style="color:#9ca3af; font-size:14px;">מנות אקטיביות בתיק:</span><br><b style="font-size:22px; color:#ffffff;">{total_portfolio_tranches}</b></div>
-        <div><span style="color:#9ca3af; font-size:14px;">הון מנוצל כולל (יחידות מטבע):</span><br><b style="font-size:22px; color:#34d399;">{total_portfolio_value:,}</b></div>
+        <div><span style="color:#9ca3af; font-size:14px;">הון מנוצל כולל:</span><br><b style="font-size:22px; color:#34d399;">{total_portfolio_value:,}</b></div>
     </div>
 </div>""", unsafe_allow_html=True)
 
 if any_active_trigger:
     st.markdown("""<div class="action-box action-alert">
         <h3 style="margin:0; color:#ffffff;">🚨 טריגר ביצוע אקטיבי!</h3>
-        <p style="margin:5px 0 0 0; color:#fca5a5; font-size:15px;">אחד מהנכסים הגיע למדרגת הקנייה שלו. הוראות הביצוע בפנים מסומנות באדום.</p>
     </div>""", unsafe_allow_html=True)
 
 for asset in processed_assets:
@@ -319,25 +310,23 @@ for asset in processed_assets:
     with st.expander(title_text, expanded=asset["needs_calibration"] or asset["trigger_active"]):
         
         if asset["needs_calibration"]:
-            st.warning(f"⚠️ שרת הבורסה לא החזיר ציטוט אוטומטי עבור {base} (שוק סגור או חסימת שרת).")
-            st.number_input(f"הזן מחיר שוק נוכחי של המדד ({base}) מגלובס/ביזפורטל:", min_value=0.0, step=1.0, value=0.0, key=asset["override_key"])
-            st.number_input(f"הזן שער שיא כל הזמנים (ATH) של המדד (אם לא ידוע, שים את השער הנוכחי):", min_value=0.0, step=1.0, value=0.0, key=asset["ath_key"])
-            st.markdown("<span style='color:#9ca3af; font-size:13px;'>ברגע שתקליד שער ותלחץ Enter, המטריצה כולה תתעורר לחיים ותציג פקודות רכישה ויעדי אקזיט!</span>", unsafe_allow_html=True)
+            st.warning(f"⚠️ שרת הבורסה לא החזיר ציטוט אוטומטי עבור {base}.")
+            st.number_input(f"הזן מחיר שוק נוכחי:", min_value=0.0, step=1.0, value=0.0, key=asset["override_key"])
+            st.number_input(f"הזן שער שיא כל הזמנים (ATH):", min_value=0.0, step=1.0, value=0.0, key=asset["ath_key"])
             continue
             
         st.markdown("<h4 style='color:#38bdf8; margin:0 0 10px 0;'>🎯 סטטוס ויעדי קנייה</h4>", unsafe_allow_html=True)
         st.markdown(f"• מרחק נוכחי משיא כל הזמנים של הבסיס: **`{asset['base_drop']:.1f}%`**")
         
         if not asset["trigger_active"]:
-            st.markdown(f"• מרחק למדרגה הבאה (מנה {asset['next_tranche_num']}): עוד **`{asset['distance_to_next']:.1f}%`** ירידה בנכס הבסיס.")
+            st.markdown(f"• מרחק למדרגה הבאה (מנה {asset['next_tranche_num']}): עוד **`{asset['distance_to_next']:.1f}%`** ירידה.")
         
-        # הגנה מפני חילוק באפס בחישוב כמות מניות לקנייה
         shares_to_buy = round(tranche_size / asset['lev_curr']) if asset['lev_curr'] > 0 else 0
         
         if asset["trigger_active"]:
-            st.error(f"💥 **פקודת ביצוע מיידית:** רכוש כעת בשווי של **{tranche_size}{currency}** מתוך הנכס הממונף (כ-{shares_to_buy} יחידות).")
+            st.error(f"💥 **פקודת ביצוע מיידית:** רכוש כעת בשווי של **{tranche_size}{currency}** (כ-{shares_to_buy} יחידות).")
         else:
-            st.markdown(f"• **פקודה עתידית מתוכננת (מנה {asset['next_tranche_num']}):** קנייה במידה והבסיס יגיע ל-**`{currency}{asset['next_base_price']:.2f}`** (שער יעד משוער לממונף: `{currency}{asset['next_lev_price']:.2f}`).")
+            st.markdown(f"• **פקודה עתידית מתוכננת:** קנייה במידה והבסיס יגיע ל-**`{currency}{asset['next_base_price']:.2f}`**.")
         
         st.markdown("<hr style='margin:15px 0; border-color:#374151;'>", unsafe_allow_html=True)
         st.markdown("<h4 style='color:#34d399; margin:0 0 10px 0;'>💼 הפוזיציה הנוכחית ומפת שחרורים</h4>", unsafe_allow_html=True)
@@ -351,56 +340,41 @@ for asset in processed_assets:
         )
         
         if st.session_state[asset["is_manual_key"]]:
-            st.markdown("<p style='color:#fbbf24; font-size:13px; margin:4px 0;'>⚠️ מצב עריכה ידנית פעיל (הסינכרון האוטומטי מושהה)</p>", unsafe_allow_html=True)
             st.button("🔄 חזור לטייס אוטומטי", key=f"{lev}_reset_btn", on_click=cb_reset_autopilot, args=(lev, asset["auto_tranches"]))
         
         current_active_tranches = st.session_state[asset["val_key"]]
         
         if current_active_tranches > 0:
             st.markdown('<div class="cyber-info-box">', unsafe_allow_html=True)
-            st.markdown('<span style="color: #38bdf8; font-weight: bold; font-size: 14px; display:block; margin-bottom:8px;">📊 פירוט שערים הנדסיים של המנות שנרכשו:</span>', unsafe_allow_html=True)
-            
             theoretical_prices = []
             for i in range(1, current_active_tranches + 1):
                 base_tranche_drop = i * drop_interval
                 lev_tranche_drop = base_tranche_drop * 3
-                
                 t_base_price = asset["base_max"] * (1 - (base_tranche_drop / 100))
                 t_lev_price = asset["lev_max"] * (1 - (lev_tranche_drop / 100))
                 theoretical_prices.append(t_lev_price)
                 
                 st.markdown(f"""<div class="cyber-row">
-                    <span>🔹 מנה {i} (ירידה: {base_tranche_drop}%)</span>
+                    <span>🔹 מנה {i} (-{base_tranche_drop}%)</span>
                     <span>בסיס: <b>{currency}{t_base_price:.2f}</b> | ממונף: <b>{currency}{t_lev_price:.2f}</b></span>
                 </div>""", unsafe_allow_html=True)
             
-            # הגנה מפני חילוק באפס בחישוב ממוצע משוקלל
             auto_calculated_avg = sum(theoretical_prices) / len(theoretical_prices) if len(theoretical_prices) > 0 else 0.0
-            st.markdown(f'<span style="color: #a3a3a3; font-size: 13px; display:block; margin-top:10px;">📐 מחיר ממוצע משוקלל של הגריד: <b>{currency}{auto_calculated_avg:.2f}</b></span>', unsafe_allow_html=True)
+            st.markdown(f'<span style="color: #a3a3a3; font-size: 13px; display:block; margin-top:10px;">📐 מחיר ממוצע משוקלל: <b>{currency}{auto_calculated_avg:.2f}</b></span>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
-            if current_active_tranches == 1: steps, label = [11, 22, 33], "שלישים"
-            elif current_active_tranches == 2: steps, label = [10, 20, 30, 40], "רבעים"
-            elif current_active_tranches == 3: steps, label = [10, 20, 30, 40, 50, 60], "שישיות"
-            elif current_active_tranches == 4: steps, label = [10, 20, 30, 40, 50, 60, 70, 80], "שמיניות"
-            else: steps, label = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100], "עשיריות"
-            
+            steps = [10, 20, 30, 40] if current_active_tranches == 2 else [10, 20, 30, 40, 50, 60]
             total_invested_capital = current_active_tranches * tranche_size
-            
-            # הגנה מפני חילוק באפס בחישוב סך המניות ויעדי המכירה
             total_shares_owned = round(total_invested_capital / auto_calculated_avg) if auto_calculated_avg > 0 else 0
             shares_per_step = max(1, round(total_shares_owned / len(steps))) if len(steps) > 0 else 1
             
             st.markdown(f"<h5 style='color:#fbbf24; margin:15px 0 5px 0;'>🎯 יעדי פקודות מכירה (Take Profit)</h5>", unsafe_allow_html=True)
-            st.markdown(f"<p style='font-size:13px; color:#9ca3af; margin-top:0;'>חלוקת אקזיט: <b>{label}</b> ({shares_per_step} מניות בכל תחנה)</p>", unsafe_allow_html=True)
             
             cumulative_cash_returned = 0
             for i, step in enumerate(steps):
                 target_price = auto_calculated_avg * (1 + step / 100)
                 step_cash = shares_per_step * target_price
                 cumulative_cash_returned += step_cash
-                
-                # הגנה מפני חילוק באפס בחישוב אחוז החזר הקרן
                 return_pct = (cumulative_cash_returned / total_invested_capital) * 100 if total_invested_capital > 0 else 0.0
                 
                 if return_pct >= 100:
@@ -413,5 +387,3 @@ for asset in processed_assets:
                         <b>📍 יעד {i+1} (+{step}%):</b> מכור <b>{shares_per_step} מניות</b> בשער <b>{currency}{target_price:.2f}</b><br>
                         <span style='font-size:12px; color:#9ca3af;'>💰 פדיון מצטבר: {currency}{cumulative_cash_returned:,.0f} ({return_pct:.0f}% מהקרן)</span>
                     </div>""", unsafe_allow_html=True)
-        else:
-            st.markdown("<span style='color:#9ca3af; font-size:14px;'>אין מנות פעילות בתיק כרגע. ברגע שהשוק ירד, יעדי המכירה והכניסות יופיעו כאן.</span>", unsafe_allow_html=True)
