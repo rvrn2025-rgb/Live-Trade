@@ -114,12 +114,14 @@ def cb_reset_autopilot(lev_symbol, auto_val):
     st.session_state[f"{lev_symbol}_is_manual"] = False
     st.session_state[f"{lev_symbol}_tranches_value"] = int(auto_val)
 
-# 4. הגדרת נכסים קבועים למטריצה
+# 4. הגדרת נכסים קבועים למטריצה כולל הנכסים החדשים והסינתטיים
 asset_pairs = [
     {"base": "QQQ", "leveraged": "TQQQ", "name": "📈 נאסד\"ק (TQQQ)"},
     {"base": "SOXX", "leveraged": "SOXL", "name": "💻 שבבים (SOXL)"},
     {"base": "SPY", "leveraged": "UPRO", "name": "🇺🇸 S&P 500 (UPRO)"},
-    {"base": "XLF", "leveraged": "FAS", "name": "💰 פיננסים (FAS)"}
+    {"base": "XLF", "leveraged": "FAS", "name": "💰 פיננסים (FAS)"},
+    {"base": "^TA35", "leveraged": "TA35-SYNTH", "name": "🇮🇱 ת\"א 35 (3x סינתטי)"},
+    {"base": "SPMO", "leveraged": "SPMO-SYNTH", "name": "🚀 מומנטום SPMO (3x סינתטי)"}
 ]
 
 # 5. הגדרות פרמטרים בראש העמוד
@@ -135,8 +137,8 @@ with col_p3:
     else:
         drop_interval = float(interval_choice.replace("%", ""))
 
-# 6. מנגנון משיכת נתונים אמין ומהיר מ-Yahoo Finance
-@st.cache_data(ttl=86400) # שמירת שיא כל הזמנים ל-24 שעות (מונע הורדות כבדות)
+# 6. מנגנון משיכת נתונים אמין מ-Yahoo Finance
+@st.cache_data(ttl=86400)
 def get_historical_ath(symbol):
     try:
         df = yf.Ticker(symbol).history(period="max", auto_adjust=False)
@@ -144,10 +146,9 @@ def get_historical_ath(symbol):
     except:
         return 0.0
 
-@st.cache_data(ttl=30) # שמירת מחירים חיים ל-30 שניות בלבד (בזמן אמת ומדויק)
+@st.cache_data(ttl=30)
 def get_live_market_data(tickers_list):
     try:
-        # הורדת 2 ימי מסחר בלבד כדי לקבל שער נוכחי ואחוז שינוי יומי בצורה סופר מהירה
         df = yf.download(tickers_list, period="2d", progress=False)
         results = {}
         for t in tickers_list:
@@ -168,8 +169,8 @@ def get_live_market_data(tickers_list):
     except:
         return {}
 
-# משיכת הנתונים בזמן אמת מהבורסה
-all_tickers = ["QQQ", "TQQQ", "SOXX", "SOXL", "SPY", "UPRO", "XLF", "FAS"]
+# רשימת טיקרים למשיכה מהבורסה (רק נכסים אמיתיים שקיימים ביאהו)
+all_tickers = ["QQQ", "TQQQ", "SOXX", "SOXL", "SPY", "UPRO", "XLF", "FAS", "^TA35", "SPMO"]
 live_quotes = get_live_market_data(all_tickers)
 
 processed_assets = []
@@ -177,32 +178,44 @@ any_active_trigger = False
 total_portfolio_tranches = 0
 total_portfolio_value = 0
 
-# עיבוד מקדים
 if not live_quotes:
-    st.error("⚠️ שגיאה זמנית בהתחברות לשרתי הבורסה של Yahoo Finance. המערכת תנסה שוב בעוד מספר שניות.")
+    st.error("⚠️ שגיאה זמנית בהתחברות לשרתי הבורסה. המערכת תנסה שוב בעוד מספר שניות.")
 else:
     for pair in asset_pairs:
         base = pair["base"]
         lev = pair["leveraged"]
         
         base_data = live_quotes.get(base, {"price": 0.0, "pct_change": 0.0})
-        lev_data = live_quotes.get(lev, {"price": 0.0, "pct_change": 0.0})
+        is_synthetic = lev.endswith("-SYNTH")
         
-        base_curr = base_data["price"]
-        lev_curr = lev_data["price"]
-        lev_change = lev_data["pct_change"]
+        # חישוב שערים ומקסימום לפי סוג הנכס (אמיתי או סינתטי)
+        if is_synthetic:
+            base_curr = base_data["price"]
+            lev_change = base_data["pct_change"] * 3 # תנועה יומית מוכפלת פי 3
+            
+            if base_curr > 0:
+                base_max_hist = get_historical_ath(base)
+                base_max = max(base_max_hist, base_curr)
+                base_drop = ((base_curr - base_max) / base_max) * 100
+                
+                lev_max = 100.0 # ערך ייחוס נומינלי קבוע בשיא לתצוגה נוחה במובייל
+                lev_curr = max(0.01, lev_max * (1 - (abs(base_drop) * 3 / 100)))
+        else:
+            lev_data = live_quotes.get(lev, {"price": 0.0, "pct_change": 0.0})
+            base_curr = base_data["price"]
+            lev_curr = lev_data["price"]
+            lev_change = lev_data["pct_change"]
+            
+            if base_curr > 0 and lev_curr > 0:
+                base_max_hist = get_historical_ath(base)
+                lev_max_hist = get_historical_ath(lev)
+                base_max = max(base_max_hist, base_curr)
+                lev_max = max(lev_max_hist, lev_curr)
+                base_drop = ((base_curr - base_max) / base_max) * 100
         
+        # הרצת הלוגיקה המתמטית המשותפת במידה והנתונים תקינים
         if base_curr > 0 and lev_curr > 0:
-            base_max_hist = get_historical_ath(base)
-            lev_max_hist = get_historical_ath(lev)
-            
-            # הגנה למקרה שהשוק בשיא חדש ממש עכשיו
-            base_max = max(base_max_hist, base_curr)
-            lev_max = max(lev_max_hist, lev_curr)
-            
-            base_drop = ((base_curr - base_max) / base_max) * 100
             abs_drop = abs(base_drop)
-            
             auto_tranches = math.floor(abs_drop / drop_interval)
             next_tranche_num = auto_tranches + 1
             next_base_drop_target = next_tranche_num * drop_interval
@@ -234,12 +247,11 @@ else:
                 "auto_tranches": auto_tranches, "next_tranche_num": next_tranche_num,
                 "next_base_price": next_base_price, "next_lev_price": next_lev_price, "next_base_drop_target": next_base_drop_target,
                 "distance_to_next": distance_to_next, "trigger_active": trigger_active,
-                "is_manual_key": is_manual_key, "val_key": val_key, "current_tranches": current_tranches
+                "is_manual_key": is_manual_key, "val_key": val_key, "current_tranches": current_tranches,
+                "is_synthetic": is_synthetic
             })
 
     # --- תצוגת הרכיבים על המסך ---
-    
-    # לוח בקרה עליון יציב למובייל
     st.markdown(f"""<div class="global-summary-box">
         <h4 style="margin:0 0 10px 0; color:#818cf8;">📊 סיכום הון במטריצה הגלובלית</h4>
         <div style="display:flex; justify-content:space-around; flex-wrap:wrap; gap:10px;">
@@ -254,7 +266,6 @@ else:
             <p style="margin:5px 0 0 0; color:#fca5a5; font-size:15px;">אחד מהנכסים הגיע למדרגת הקנייה שלו. הוראות הביצוע בפנים מסומנות באדום.</p>
         </div>""", unsafe_allow_html=True)
 
-    # כרטיסי הנכסים האנכית
     for asset in processed_assets:
         lev = asset["pair"]["leveraged"]
         base = asset["pair"]["base"]
@@ -262,12 +273,15 @@ else:
         
         sign = "+" if asset["lev_change"] > 0 else ""
         status_label = "🔴 טריגר רכישה!" if asset["trigger_active"] else "⏳ בהמתנה"
-        title_text = f"{name} | ${asset['lev_curr']:.2f} ({sign}{asset['lev_change']:.2f}%) | {status_label}"
+        
+        # תיוג מחיר שונה לנכס סינתטי כדי לשמור על שקיפות הנדסית
+        price_display = f"${asset['lev_curr']:.2f} (סינתטי)" if asset["is_synthetic"] else f"${asset['lev_curr']:.2f}"
+        title_text = f"{name} | {price_display} ({sign}{asset['lev_change']:.2f}%) | {status_label}"
         
         with st.expander(title_text, expanded=asset["trigger_active"]):
             
             st.markdown("<h4 style='color:#38bdf8; margin:0 0 10px 0;'>🎯 סטטוס ויעדי קנייה</h4>", unsafe_allow_html=True)
-            st.markdown(f"• מרחק נוכחי משיא כל הזמנים: **`{asset['base_drop']:.1f}%`**")
+            st.markdown(f"• מרחק נוכחי משיא כל הזמנים של הבסיס: **`{asset['base_drop']:.1f}%`**")
             
             if not asset["trigger_active"]:
                 st.markdown(f"• מרחק למדרגה הבאה (מנה {asset['next_tranche_num']}): עוד **`{asset['distance_to_next']:.1f}%`** ירידה בנכס הבסיס.")
@@ -275,9 +289,9 @@ else:
             shares_to_buy = round(tranche_size / asset['lev_curr'])
             
             if asset["trigger_active"]:
-                st.error(f"💥 **פקודת ביצוע מיידית:** רכוש כעת **{shares_to_buy} מניות** של {lev}")
+                st.error(f"💥 **פקודת ביצוע מיידית:** רכוש כעת בשווי של **{tranche_size}$** מתוך הנכס הממונף (כערך של כ-{shares_to_buy} יחידות).")
             else:
-                st.markdown(f"• **פקודה עתידית מתוכננת (מנה {asset['next_tranche_num']}):** קניית **{shares_to_buy} מניות** במידה ו-{base} מגיע ל-**`${asset['next_base_price']:.2f}`** (שער משוער לממונף: `${asset['next_lev_price']:.2f}`).")
+                st.markdown(f"• **פקודה עתידית מתוכננת (מנה {asset['next_tranche_num']}):** קנייה במידה ו-{base} מגיע ל-**`${asset['next_base_price']:.2f}`** (שער יעד משוער לממונף: `${asset['next_lev_price']:.2f}`).")
             
             st.markdown("<hr style='margin:15px 0; border-color:#374151;'>", unsafe_allow_html=True)
             
