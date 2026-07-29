@@ -2,19 +2,18 @@ import streamlit as st
 import requests
 import yfinance as yf
 import pandas as pd
-import ta
 import math
 import xml.etree.ElementTree as ET
 from urllib.parse import quote
 from streamlit_autorefresh import st_autorefresh
 
-# 1. הגדרת תצורת דף ומערכת
+# 1. הגדרת תצורת דף ומערכת לביצועים מקסימליים
 st.set_page_config(page_title="DCA Matrix Terminal", layout="wide", initial_sidebar_state="collapsed")
 
-# רענון אוטומטי מובנה כל 65 שניות
+# רענון אוטומטי מובנה כל 65 שניות לסנכרון מול הבורסה
 st_autorefresh(interval=65000, key="matrix_live_refresh")
 
-# 2. הזרקת עיצוב הייטקיסטי יוקרתי (Mobile-First & RTL)
+# 2. ארכיטקטורת עיצוב הייטקיסטית (Mobile-First, ללא Sidebar, תמיכת RTL מלאה)
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
 
@@ -26,6 +25,7 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"], .main,
     max-width: 100vw !important;
 }
 
+/* הגדרת כיווניות ימין לשמאל גלובלית */
 [data-testid="stAppViewContainer"] {
     direction: RTL !important;
     text-align: right !important;
@@ -38,6 +38,17 @@ h1, h2, h3, h4, h5 { color: #f9fafb !important; font-weight: 800 !important; }
     font-weight: 600 !important; 
     color: #9ca3af !important; 
     text-align: right !important;
+}
+
+/* לוח סיכום הון עליון - מחליף את ה-Sidebar הבעייתי */
+.global-summary-box {
+    background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);
+    border: 1px solid #312e81;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 25px;
+    text-align: center;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
 .action-box {
@@ -65,6 +76,7 @@ div[data-testid="stNumberInput"] input {
     border: 1px solid #4b5563 !important;
 }
 
+/* תיבת המידע ההנדסית של המנות */
 .cyber-info-box {
     background: linear-gradient(135deg, #111827 0%, #0f172a 100%);
     border: 1px solid #1e293b;
@@ -83,6 +95,7 @@ div[data-testid="stNumberInput"] input {
     justify-content: space-between;
 }
 
+/* כרטיסי יעדי המכירה */
 .step-card {
     background-color: #111827;
     border-right: 4px solid #3b82f6;
@@ -100,7 +113,7 @@ div[data-testid="stNumberInput"] input {
 }
 </style>""", unsafe_allow_html=True)
 
-# 3. פונקציות קדם-ריצה (Callbacks) לניהול סטייט חסין תקלות
+# 3. פונקציות קדם-ריצה (Callbacks) לניהול מצב ידני חסין לופים
 def cb_set_manual(lev_symbol):
     st.session_state[f"{lev_symbol}_is_manual"] = True
 
@@ -108,7 +121,7 @@ def cb_reset_autopilot(lev_symbol, auto_val):
     st.session_state[f"{lev_symbol}_is_manual"] = False
     st.session_state[f"{lev_symbol}_tranches_value"] = int(auto_val)
 
-# 4. אתחול נכסים והגדרות בסיס
+# 4. הגדרת נכסים קבועים למטריצה
 asset_pairs = [
     {"base": "QQQ", "leveraged": "TQQQ", "name": "📈 נאסד\"ק (TQQQ)"},
     {"base": "SOXX", "leveraged": "SOXL", "name": "💻 שבבים (SOXL)"},
@@ -116,18 +129,20 @@ asset_pairs = [
     {"base": "XLF", "leveraged": "FAS", "name": "💰 פיננסים (FAS)"}
 ]
 
+# 5. הגדרות פרמטרים בראש העמוד
+st.markdown("### 🛠️ הגדרות אסטרטגיית גריד")
 col_p1, col_p2, col_p3 = st.columns([2, 2, 2])
 with col_p1:
     tranche_size = st.number_input("💰 תקציב קבוע למנה ($):", min_value=100, max_value=100000, value=3000, step=500)
 with col_p2:
-    interval_choice = st.selectbox("📐 מרווח ירידה בין מנות:", ["3.5%", "5.0%", "7.0%", "10.0%", "הזן ידנית..."], index=1)
+    interval_choice = st.selectbox("📐 מרווח ירידה בין מנות (נכס בסיס):", ["3.5%", "5.0%", "7.0%", "10.0%", "הזן ידנית..."], index=1)
 with col_p3:
     if interval_choice == "הזן ידנית...":
         drop_interval = st.number_input("הזן אחוז מרווח אישי:", min_value=0.5, max_value=50.0, value=6.5, step=0.5)
     else:
         drop_interval = float(interval_choice.replace("%", ""))
 
-# 5. פונקציות תשתית למשיכת נתונים
+# 6. פונקציות תשתית למשיכת נתוני שוק ומאקרו
 @st.cache_data(ttl=60)
 def get_realtime_quotes(symbols_string, api_key):
     url = f"https://api.twelvedata.com/quote?symbol={symbols_string}&apikey={api_key}"
@@ -144,9 +159,10 @@ quote_response = get_realtime_quotes(",".join(all_tickers), API_KEY)
 
 processed_assets = []
 any_active_trigger = False
-total_portfolio_value = 0
 total_portfolio_tranches = 0
+total_portfolio_value = 0
 
+# --- שלב א': עיבוד נתונים מקדים וחישוב הון כולל (לפני הציור על המסך) ---
 if "status" in quote_response and quote_response["status"] == "error":
     st.error("❌ שגיאה זמנית במשיכת נתוני השוק. המערכת תתרענן אוטומטית בעוד דקה.")
 else:
@@ -194,23 +210,38 @@ else:
                 if not st.session_state[is_manual_key]:
                     st.session_state[val_key] = int(auto_tranches)
                 
+                current_tranches = st.session_state[val_key]
+                total_portfolio_tranches += current_tranches
+                total_portfolio_value += (current_tranches * tranche_size)
+                
                 processed_assets.append({
                     "pair": pair, "base_curr": base_curr, "lev_curr": lev_curr, "lev_change": lev_change,
                     "base_max": base_max, "lev_max": lev_max, "base_drop": base_drop,
                     "auto_tranches": auto_tranches, "next_tranche_num": next_tranche_num,
                     "next_base_price": next_base_price, "next_lev_price": next_lev_price, "next_base_drop_target": next_base_drop_target,
                     "distance_to_next": distance_to_next, "trigger_active": trigger_active,
-                    "is_manual_key": is_manual_key, "val_key": val_key
+                    "is_manual_key": is_manual_key, "val_key": val_key, "current_tranches": current_tranches
                 })
 
-    # 6. התראה עליונה אקטיבית
+    # --- שלב ב': תצוגת רכיבים על המסך (Layout) ---
+    
+    # 7. לוח בקרה עליון הנדסי (במקום ה-Sidebar שנמחק)
+    st.markdown(f"""<div class="global-summary-box">
+        <h4 style="margin:0 0 10px 0; color:#818cf8;">📊 סיכום הון במטריצה הגלובלית</h4>
+        <div style="display:flex; justify-content:space-around; flex-wrap:wrap; gap:10px;">
+            <div><span style="color:#9ca3af; font-size:14px;">מנות אקטיביות בתיק:</span><br><b style="font-size:22px; color:#ffffff;">{total_portfolio_tranches}</b></div>
+            <div><span style="color:#9ca3af; font-size:14px;">הון מנוצל כולל:</span><br><b style="font-size:22px; color:#34d399;">${total_portfolio_value:,}</b></div>
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    # התראה עליונה במידה ויש קנייה דחופה
     if any_active_trigger:
         st.markdown("""<div class="action-box action-alert">
             <h3 style="margin:0; color:#ffffff;">🚨 טריגר ביצוע אקטיבי!</h3>
-            <p style="margin:5px 0 0 0; color:#fca5a5; font-size:15px;">אחד מהנכסים הגיע למדרגת הקנייה שלו. ההוראות בפנים מסומנות באדום.</p>
+            <p style="margin:5px 0 0 0; color:#fca5a5; font-size:15px;">אחד מהנכסים הגיע למדרגת הקנייה שלו. הוראות הביצוע בפנים מסומנות באדום.</p>
         </div>""", unsafe_allow_html=True)
 
-    # 7. תצוגת הכרטיסים האנכית
+    # 8. תצוגת כרטיסי הנכסים האנכית
     for asset in processed_assets:
         lev = asset["pair"]["leveraged"]
         base = asset["pair"]["base"]
@@ -241,6 +272,7 @@ else:
             # --- חלק 2: ניהול פוזיציה ויעדי מכירה ---
             st.markdown("<h4 style='color:#34d399; margin:0 0 10px 0;'>💼 הפוזיציה הנוכחית ומפת שחרורים</h4>", unsafe_allow_html=True)
             
+            # שדה קלט המקושר ישירות לסטייט ולקולבק קדם-ריצה חסין נעילות ושגיאות
             st.number_input(
                 "מנות אקטיביות בתיק כרגע:", 
                 min_value=0, 
@@ -250,6 +282,7 @@ else:
                 args=(lev,)
             )
             
+            # כפתור חזרה לטייס אוטומטי המשתמש ב-on_click בטוח לחלוטין וללא שגיאות זיכרון
             if st.session_state[asset["is_manual_key"]]:
                 st.markdown("<p style='color:#fbbf24; font-size:13px; margin:4px 0;'>⚠️ מצב עריכה ידנית פעיל (הסינכרון האוטומטי מושהה)</p>", unsafe_allow_html=True)
                 st.button(
@@ -261,11 +294,8 @@ else:
             
             current_active_tranches = st.session_state[asset["val_key"]]
             
-            total_portfolio_tranches += current_active_tranches
-            total_portfolio_value += (current_active_tranches * tranche_size)
-            
             if current_active_tranches > 0:
-                # --- תיבת מידע אינפורמטיבית והייטקיסטית ---
+                # --- תיבת מידע אינפורמטיבית והייטקיסטית (Cyber-Grid Box) ---
                 st.markdown('<div class="cyber-info-box">', unsafe_allow_html=True)
                 st.markdown('<span style="color: #38bdf8; font-weight: bold; font-size: 14px; display:block; margin-bottom:8px;">📊 פירוט שערים הנדסיים של המנות שנרכשו:</span>', unsafe_allow_html=True)
                 
@@ -287,6 +317,7 @@ else:
                 st.markdown(f'<span style="color: #a3a3a3; font-size: 13px; display:block; margin-top:10px;">📐 מחיר ממוצע משוקלל של הגריד: <b>${auto_calculated_avg:.2f}</b></span>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
                 
+                # הגדרת אסטרטגיית שחרורים אוטומטית לפי כמות המנות בפוזיציה
                 if current_active_tranches == 1: steps, label = [11, 22, 33], "שלישים"
                 elif current_active_tranches == 2: steps, label = [10, 20, 30, 40], "רבעים"
                 elif current_active_tranches == 3: steps, label = [10, 20, 30, 40, 50, 60], "שישיות"
@@ -310,7 +341,7 @@ else:
                     if return_pct >= 100:
                         st.markdown(f"""<div class="step-card step-card-free">
                             <b>📍 יעד {i+1} (+{step}%):</b> מכור <b>{shares_per_step} מניות</b> בשער <b>${target_price:.2f}</b><br>
-                            <span style='font-size:12px; color:#34d399; font-weight:700;'>🟢 פדיון מצטבר: ${cumulative_cash_returned:,.0f} ({return_pct:.0f}% מהקרן) 🚀 סיכון אפס! הקרן כוסתה.</span>
+                            <span style='font-size:12px; color:#34d399; font-weight:700;'>🟢 פדיון מצטבר: ${cumulative_cash_returned:,.0f} ({return_pct:.0f}% מהקרן) 🚀 סיכון אפס! הקרן כוסתה במלואה.</span>
                         </div>""", unsafe_allow_html=True)
                     else:
                         st.markdown(f"""<div class="step-card">
@@ -319,8 +350,3 @@ else:
                         </div>""", unsafe_allow_html=True)
             else:
                 st.markdown("<span style='color:#9ca3af; font-size:14px;'>אין מנות פעילות בתיק כרגע. ברגע שהשוק ירד ויבוצע איסוף, יעדי המכירה והכניסות יופיעו כאן.</span>", unsafe_allow_html=True)
-
-# 8. סרגל צדי לסיכום הון כולל
-st.sidebar.markdown("### 📊 סיכום הון במטריצה")
-st.sidebar.metric("סה\"כ מנות בתיק", total_portfolio_tranches)
-st.sidebar.metric("הון מנוצל כולל", f"${total_portfolio_value:,}")
