@@ -4,7 +4,7 @@ import yfinance as yf
 import pandas as pd
 import ta
 import math
-import xml.etree.ElementTree as ET
+import xml.etree.TreeElement as ET
 from urllib.parse import quote
 from streamlit_autorefresh import st_autorefresh
 
@@ -65,7 +65,6 @@ div[data-testid="stNumberInput"] input {
     border: 1px solid #4b5563 !important;
 }
 
-/* קופסת מידע הייטקיסטית לכניסות גריד */
 .cyber-info-box {
     background: linear-gradient(135deg, #111827 0%, #0f172a 100%);
     border: 1px solid #1e293b;
@@ -84,7 +83,6 @@ div[data-testid="stNumberInput"] input {
     justify-content: space-between;
 }
 
-/* כרטיסי שחרור ויעדי מכירה */
 .step-card {
     background-color: #111827;
     border-right: 4px solid #3b82f6;
@@ -92,7 +90,6 @@ div[data-testid="stNumberInput"] input {
     margin: 10px 0;
     border-radius: 0 6px 6px 0;
     border: 1px solid #1f2937;
-    border-right: 4px solid #3b82f6;
 }
 .step-card-free {
     border-right-color: #10b981 !important;
@@ -103,9 +100,13 @@ div[data-testid="stNumberInput"] input {
 }
 </style>""", unsafe_allow_html=True)
 
-# 3. פונקציית עזר לניהול זיכרון ידני חסין לופים
-def trigger_manual_mode(lev_symbol):
+# 3. פונקציות קדם-ריצה (Callbacks) לניהול סטייט חסין תקלות
+def cb_set_manual(lev_symbol):
     st.session_state[f"{lev_symbol}_is_manual"] = True
+
+def cb_reset_autopilot(lev_symbol, auto_val):
+    st.session_state[f"{lev_symbol}_is_manual"] = False
+    st.session_state[f"{lev_symbol}_tranches_value"] = int(auto_val)
 
 # 4. אתחול נכסים והגדרות בסיס
 asset_pairs = [
@@ -184,15 +185,16 @@ else:
                 if trigger_active:
                     any_active_trigger = True
                 
-                # מנגנון סטייט חסין לנעילות ובלתי תלוי ברפרושים
+                # ארכיטקטורת מצב נקייה - מבוססת מפתח ייחודי לכל נכס
                 is_manual_key = f"{lev}_is_manual"
-                tranches_key = f"{lev}_manual_tranches"
+                val_key = f"{lev}_tranches_value"
                 
                 if is_manual_key not in st.session_state:
                     st.session_state[is_manual_key] = False
                 
+                # אם אנחנו בטייס אוטומטי, נסנכרן את ערך השדה ישירות מול השוק הנוכחי
                 if not st.session_state[is_manual_key]:
-                    st.session_state[tranches_key] = int(auto_tranches)
+                    st.session_state[val_key] = int(auto_tranches)
                 
                 processed_assets.append({
                     "pair": pair, "base_curr": base_curr, "lev_curr": lev_curr, "lev_change": lev_change,
@@ -200,7 +202,7 @@ else:
                     "auto_tranches": auto_tranches, "next_tranche_num": next_tranche_num,
                     "next_base_price": next_base_price, "next_lev_price": next_lev_price, "next_base_drop_target": next_base_drop_target,
                     "distance_to_next": distance_to_next, "trigger_active": trigger_active,
-                    "is_manual_key": is_manual_key, "tranches_key": tranches_key
+                    "is_manual_key": is_manual_key, "val_key": val_key
                 })
 
     # 6. התראה עליונה אקטיבית
@@ -210,7 +212,7 @@ else:
             <p style="margin:5px 0 0 0; color:#fca5a5; font-size:15px;">אחד מהנכסים הגיע למדרגת הקנייה שלו. ההוראות בפנים מסומנות באדום.</p>
         </div>""", unsafe_allow_html=True)
 
-    # 7. תצוגת הכרטיסים האנכית החדשה
+    # 7. תצוגת הכרטיסים האנכית
     for asset in processed_assets:
         lev = asset["pair"]["leveraged"]
         base = asset["pair"]["base"]
@@ -241,32 +243,34 @@ else:
             # --- חלק 2: ניהול פוזיציה ויעדי מכירה ---
             st.markdown("<h4 style='color:#34d399; margin:0 0 10px 0;'>💼 הפוזיציה הנוכחית ומפת שחרורים</h4>", unsafe_allow_html=True)
             
-            # שדה קלט מנות מנוהל באמצעות קולבק ייעודי שלא ננעל לעולם
-            active_t = st.number_input(
+            # שדה קלט המקושר ישירות לסטייט ולקולבק קדם-ריצה חסין נעילות
+            st.number_input(
                 "מנות אקטיביות בתיק כרגע:", 
                 min_value=0, 
                 max_value=20, 
-                key=asset["tranches_key"],
-                on_change=trigger_manual_mode,
+                key=asset["val_key"],
+                on_change=cb_set_manual,
                 args=(lev,)
             )
             
-            # הצגת כפתור איפוס תקין רק במידה ופעיל מעקף ידני
+            # כפתור חזרה לטייס אוטומטי המשתמש ב-on_click בטוח לחלוטין
             if st.session_state[asset["is_manual_key"]]:
                 st.markdown("<p style='color:#fbbf24; font-size:13px; margin:4px 0;'>⚠️ מצב עריכה ידנית פעיל (הסינכרון האוטומטי מושהה)</p>", unsafe_allow_html=True)
-                if st.button("🔄 חזור לטייס אוטומטי", key=f"{lev}_reset_btn"):
-                    st.session_state[asset["is_manual_key"]] = False
-                    st.session_state[asset["tranches_key"]] = int(asset["auto_tranches"])
-                    st.rerun()
+                st.button(
+                    "🔄 חזור לטייס אוטומטי", 
+                    key=f"{lev}_reset_btn",
+                    on_click=cb_reset_autopilot,
+                    args=(lev, asset["auto_tranches"])
+                )
             
-            current_active_tranches = st.session_state[asset["tranches_key"]]
+            current_active_tranches = st.session_state[asset["val_key"]]
             
             # עדכון סורק תיק כולל
             total_portfolio_tranches += current_active_tranches
             total_portfolio_value += (current_active_tranches * tranche_size)
             
             if current_active_tranches > 0:
-                # --- תיבת מידע אינפורמטיבית והייטקיסטית לפירוט נקודות הכניסה ---
+                # --- תיבת מידע אינפורמטיבית והייטקיסטית ---
                 st.markdown('<div class="cyber-info-box">', unsafe_allow_html=True)
                 st.markdown('<span style="color: #38bdf8; font-weight: bold; font-size: 14px; display:block; margin-bottom:8px;">📊 פירוט שערים הנדסיים של המנות שנרכשו:</span>', unsafe_allow_html=True)
                 
