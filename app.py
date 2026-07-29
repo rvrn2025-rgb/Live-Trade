@@ -114,15 +114,15 @@ def cb_reset_autopilot(lev_symbol, auto_val):
     st.session_state[f"{lev_symbol}_is_manual"] = False
     st.session_state[f"{lev_symbol}_tranches_value"] = int(auto_val)
 
-# 4. הגדרת נכסים קבועים למטריצה (כולל פתרון הנייר הרשמי 1147578.TA למדד הבנקים)
+# 4. הגדרת נכסים קבועים למטריצה (הוספנו ערכי גיבוי מובנים למקרה שאין אינטרנט/בורסה סגורה)
 asset_pairs = [
-    {"base": "QQQ", "leveraged": "TQQQ", "name": "📈 נאסד\"ק (TQQQ)"},
-    {"base": "SOXX", "leveraged": "SOXL", "name": "💻 שבבים (SOXL)"},
-    {"base": "SPY", "leveraged": "UPRO", "name": "🇺🇸 S&P 500 (UPRO)"},
-    {"base": "XLF", "leveraged": "FAS", "name": "💰 פיננסים (FAS)"},
-    {"base": "TA35.TA", "leveraged": "TA35-SYNTH", "name": "🇮🇱 ת\"א 35 (3x סינתטי)"},
-    {"base": "1147578.TA", "leveraged": "BANKS-SYNTH", "name": "🏦 מדד הבנקים 5 (3x סינתטי)"},
-    {"base": "SPMO", "leveraged": "SPMO-SYNTH", "name": "🚀 מומנטום SPMO (3x סינתטי)"}
+    {"base": "QQQ", "leveraged": "TQQQ", "name": "📈 נאסד\"ק (TQQQ)", "fallback_price": 440.0, "fallback_ath": 500.0},
+    {"base": "SOXX", "leveraged": "SOXL", "name": "💻 שבבים (SOXL)", "fallback_price": 220.0, "fallback_ath": 260.0},
+    {"base": "SPY", "leveraged": "UPRO", "name": "🇺🇸 S&P 500 (UPRO)", "fallback_price": 520.0, "fallback_ath": 560.0},
+    {"base": "XLF", "leveraged": "FAS", "name": "💰 פיננסים (FAS)", "fallback_price": 42.0, "fallback_ath": 48.0},
+    {"base": "TA35.TA", "leveraged": "TA35-SYNTH", "name": "🇮🇱 ת\"א 35 (3x סינתטי)", "fallback_price": 2050.0, "fallback_ath": 2150.0},
+    {"base": "1147578.TA", "leveraged": "BANKS-SYNTH", "name": "🏦 מדד הבנקים 5 (3x סינתטי)", "fallback_price": 4350.0, "fallback_ath": 4650.0},
+    {"base": "SPMO", "leveraged": "SPMO-SYNTH", "name": "🚀 מומנטום SPMO (3x סינתטי)", "fallback_price": 72.0, "fallback_ath": 78.0}
 ]
 
 # 5. הגדרות פרמטרים בראש העמוד
@@ -141,11 +141,11 @@ with col_p3:
 if drop_interval <= 0:
     drop_interval = 0.1
 
-# 6. מנגנון משיכת נתונים מהיר מ-Yahoo Finance עם הגנות קריסה ושכבת שריון מתמטית
+# 6. מנגנון משיכת נתונים מהיר מ-Yahoo Finance
 @st.cache_data(ttl=86400)
 def get_historical_ath(symbol):
     try:
-        df = yf.Ticker(symbol).history(period="max", auto_adjust=False)
+        df = yf.Ticker(symbol).history(period="10y", auto_adjust=False)
         if not df.empty and 'High' in df.columns:
             return float(df['High'].max())
         return 0.0
@@ -188,7 +188,7 @@ any_active_trigger = False
 total_portfolio_tranches = 0
 total_portfolio_value = 0
 
-# 7. עיבוד ואינטגרציה של הנתונים
+# 7. עיבוד ואינטגרציה של הנתונים עם מנגנון שער גיבוי מובנה
 for pair in asset_pairs:
     base = pair["base"]
     lev = pair["leveraged"]
@@ -204,53 +204,45 @@ for pair in asset_pairs:
     override_key = f"{base}_manual_price_input"
     ath_key = f"{base}_manual_ath_input"
     
-    if base_curr == 0 and override_key in st.session_state:
-        base_curr = st.session_state[override_key]
-        
-    base_max_hist = get_historical_ath(base)
-    if base_max_hist == 0 and ath_key in st.session_state:
-        base_max_hist = st.session_state[ath_key]
-        
-    if base_curr > 0:
-        base_max = max(base_max_hist if base_max_hist > 0 else base_curr, base_curr)
-        base_drop = ((base_curr - base_max) / base_max) * 100 if base_max > 0 else 0.0
-        abs_drop = abs(base_drop)
-        
-        if is_synthetic:
-            lev_change = base_change * 3
-            lev_max = 100.0
-            lev_curr = max(0.01, lev_max * (1 - (abs_drop * 3 / 100)))
+    # הפעלת שער הגיבוי אם יאהו החזיר 0 ולא הזנת ידנית משהו אחר
+    if base_curr == 0:
+        if override_key in st.session_state and st.session_state[override_key] > 0:
+            base_curr = st.session_state[override_key]
         else:
-            lev_data = live_quotes.get(lev, {"price": 0.0, "pct_change": 0.0})
-            lev_curr = lev_data["price"]
-            lev_change = lev_data["pct_change"]
-            lev_max_hist = get_historical_ath(lev)
-            lev_max = max(lev_max_hist if lev_max_hist > 0 else lev_curr, lev_curr)
+            base_curr = pair["fallback_price"]
             
-        auto_tranches = math.floor(abs_drop / drop_interval)
-        next_tranche_num = auto_tranches + 1
-        next_base_drop_target = next_tranche_num * drop_interval
-        next_base_price = base_max * (1 - (next_base_drop_target / 100))
-        next_lev_price = lev_max * (1 - ((next_base_drop_target * 3) / 100))
-        
-        distance_to_next = next_base_drop_target - abs_drop
-        trigger_active = distance_to_next <= 0.5
-        needs_calibration = False
-    else:
-        base_drop = 0.0
-        lev_curr = 0.0
-        lev_change = 0.0
-        auto_tranches = 0
-        next_tranche_num = 1
-        next_base_drop_target = drop_interval
-        next_base_price = 0.0
-        next_lev_price = 0.0
-        distance_to_next = drop_interval
-        trigger_active = False
-        needs_calibration = True
-        base_max = 0.0
+    base_max_hist = get_historical_ath(base)
+    if base_max_hist == 0:
+        if ath_key in st.session_state and st.session_state[ath_key] > 0:
+            base_max_hist = st.session_state[ath_key]
+        else:
+            base_max_hist = pair["fallback_ath"]
+            
+    # כעת בטוח ב-100% שיש לנו שער גדול מ-0 (או מיאהו או מהגיבוי)
+    base_max = max(base_max_hist, base_curr)
+    base_drop = ((base_curr - base_max) / base_max) * 100 if base_max > 0 else 0.0
+    abs_drop = abs(base_drop)
+    
+    if is_synthetic:
+        lev_change = base_change * 3
         lev_max = 100.0
+        lev_curr = max(0.01, lev_max * (1 - (abs_drop * 3 / 100)))
+    else:
+        lev_data = live_quotes.get(lev, {"price": 0.0, "pct_change": 0.0})
+        lev_curr = lev_data["price"] if lev_data["price"] > 0 else (pair["fallback_price"] / 4) # הערכה קלה לממונף אמיתי
+        lev_change = lev_data["pct_change"]
+        lev_max_hist = get_historical_ath(lev)
+        lev_max = max(lev_max_hist if lev_max_hist > 0 else lev_curr, lev_curr)
         
+    auto_tranches = math.floor(abs_drop / drop_interval)
+    next_tranche_num = auto_tranches + 1
+    next_base_drop_target = next_tranche_num * drop_interval
+    next_base_price = base_max * (1 - (next_base_drop_target / 100))
+    next_lev_price = lev_max * (1 - ((next_base_drop_target * 3) / 100))
+    
+    distance_to_next = next_base_drop_target - abs_drop
+    trigger_active = distance_to_next <= 0.5
+    
     if trigger_active:
         any_active_trigger = True
         
@@ -274,11 +266,11 @@ for pair in asset_pairs:
         "next_base_price": next_base_price, "next_lev_price": next_lev_price, "next_base_drop_target": next_base_drop_target,
         "distance_to_next": distance_to_next, "trigger_active": trigger_active,
         "is_manual_key": is_manual_key, "val_key": val_key, "current_tranches": current_tranches,
-        "is_synthetic": is_synthetic, "currency": currency, "needs_calibration": needs_calibration,
-        "override_key": override_key, "ath_key": ath_key, "base_max_hist": base_max_hist
+        "is_synthetic": is_synthetic, "currency": currency, "override_key": override_key, "ath_key": ath_key,
+        "using_fallback": (live_quotes.get(base, {"price": 0.0})["price"] == 0)
     })
 
-# --- תצוגה ---
+# --- תצוגת הרכיבים ---
 st.markdown(f"""<div class="global-summary-box">
     <h4 style="margin:0 0 10px 0; color:#818cf8;">📊 סיכום הון במטריצה הגלובלית</h4>
     <div style="display:flex; justify-content:space-around; flex-wrap:wrap; gap:10px;">
@@ -299,23 +291,24 @@ for asset in processed_assets:
     currency = asset["currency"]
     
     sign = "+" if asset["lev_change"] > 0 else ""
+    fallback_badge = " [שער גיבוי]" if asset["using_fallback"] else ""
     
-    if asset["needs_calibration"]:
-        title_text = f"{name} | ⚠️ נדרש כיול שער ידני | ⏳ בהמתנה"
-    else:
-        price_display = f"{currency}{asset['lev_curr']:.2f} (סינתטי)" if asset["is_synthetic"] else f"{currency}{asset['lev_curr']:.2f}"
-        status_label = "🔴 טריגר רכישה!" if asset["trigger_active"] else "⏳ בהמתנה"
-        title_text = f"{name} | {price_display} ({sign}{asset['lev_change']:.2f}%) | {status_label}"
+    price_display = f"{currency}{asset['lev_curr']:.2f} (סינתטי)" if asset["is_synthetic"] else f"{currency}{asset['lev_curr']:.2f}"
+    status_label = "🔴 טריגר רכישה!" if asset["trigger_active"] else "⏳ בהמתנה"
+    title_text = f"{name} | {price_display} ({sign}{asset['lev_change']:.2f}%){fallback_badge} | {status_label}"
     
-    with st.expander(title_text, expanded=asset["needs_calibration"] or asset["trigger_active"]):
+    with st.expander(title_text, expanded=asset["trigger_active"]):
         
-        if asset["needs_calibration"]:
-            st.warning(f"⚠️ שרת הבורסה לא החזיר ציטוט אוטומטי עבור {base}.")
-            st.number_input(f"הזן מחיר שוק נוכחי:", min_value=0.0, step=1.0, value=0.0, key=asset["override_key"])
-            st.number_input(f"הזן שער שיא כל הזמנים (ATH):", min_value=0.0, step=1.0, value=0.0, key=asset["ath_key"])
-            continue
-            
+        if asset["using_fallback"]:
+            st.info(f"💡 שרת הבורסה סגור או לא זמין. המערכת טענה אוטומטית שער גיבוי זמני לבדיקה. באפשרותך לעדכן אותו כאן:")
+            col_in1, col_in2 = st.columns(2)
+            with col_in1:
+                st.number_input(f"עדכן מחיר נוכחי ({base}):", min_value=0.0, step=1.0, value=asset["base_curr"], key=asset["override_key"])
+            with col_in2:
+                st.number_input(f"עדכן שער שיא (ATH):", min_value=0.0, step=1.0, value=asset["base_max"], key=asset["ath_key"])
+        
         st.markdown("<h4 style='color:#38bdf8; margin:0 0 10px 0;'>🎯 סטטוס ויעדי קנייה</h4>", unsafe_allow_html=True)
+        st.markdown(f"• שער בסיס נוכחי בשימוש: **`{asset['base_curr']:.2f}`** | שיא כל הזמנים: **`{asset['base_max']:.2f}`**")
         st.markdown(f"• מרחק נוכחי משיא כל הזמנים של הבסיס: **`{asset['base_drop']:.1f}%`**")
         
         if not asset["trigger_active"]:
